@@ -1,0 +1,92 @@
+# A2 API: Web BFF (80), Mobile BFF (80), Customer service (3000), Book service (3000).
+# Local run: backend_router mimics Internal ALB (path-based routing).
+# Use: docker compose up -d
+# Test Web BFF:  http://localhost:8080/status  (add X-Client-Type: Web, Authorization: Bearer <jwt>)
+# Test Mobile BFF: http://localhost:8081/status (add X-Client-Type: iOS, Authorization: Bearer <jwt>)
+
+services:
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: bookstore
+      MYSQL_USER: app
+      MYSQL_PASSWORD: app
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql:ro
+
+  customer_service:
+    build:
+      context: ./customer_service
+      dockerfile: Dockerfile
+    environment:
+      DB_HOST: db
+      DB_USER: app
+      DB_PASSWORD: app
+      DB_NAME: bookstore
+      PORT: "3000"
+    expose:
+      - "3000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  book_service:
+    build:
+      context: ./book_service
+      dockerfile: Dockerfile
+    environment:
+      DB_HOST: db
+      DB_USER: app
+      DB_PASSWORD: app
+      DB_NAME: bookstore
+      PORT: "3000"
+    expose:
+      - "3000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  backend_router:
+    image: nginx:alpine
+    volumes:
+      - ./scripts/nginx-backend.conf:/etc/nginx/conf.d/default.conf:ro
+    # Do NOT publish host port 3000.
+    # BFFs call the router via Docker network (backend_router:3000),
+    # and the host may already have something listening on :3000.
+    expose:
+      - "3000"
+    depends_on:
+      - customer_service
+      - book_service
+
+  web_bff:
+    build:
+      context: .
+      dockerfile: web_bff/Dockerfile
+    environment:
+      URL_BASE_BACKEND_SERVICES: http://backend_router:3000
+      PORT: "80"
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend_router
+
+  mobile_bff:
+    build:
+      context: .
+      dockerfile: mobile_bff/Dockerfile
+    environment:
+      URL_BASE_BACKEND_SERVICES: http://backend_router:3000
+      PORT: "80"
+    ports:
+      - "8081:80"
+    depends_on:
+      - backend_router
