@@ -12,6 +12,7 @@ import pymysql
 from flask import Flask, Response, jsonify, request
 
 app = Flask(__name__)
+app.url_map.strict_slashes = False
 
 DB_CONFIG = {
     "host": os.environ.get("DB_HOST", "localhost"),

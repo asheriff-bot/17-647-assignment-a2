@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.join(_app_dir, ".."))
 from shared.bff_auth import require_mobile_bff
 
 app = Flask(__name__)
+app.url_map.strict_slashes = False
 _backend = (os.environ.get("URL_BASE_BACKEND_SERVICES") or "").strip()
 BACKEND_BASE = (_backend or "http://localhost:3000").rstrip("/")
 

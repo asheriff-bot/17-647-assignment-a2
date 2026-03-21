@@ -128,12 +128,20 @@ assign_2_aws/
 
 ## Gradescope / autograder still failing?
 
+**Pattern:** Tests that only need the BFF (**JWT**, **headers**, **`GET /status`**) pass, but **book/customer** tests fail → the problem is almost always **after** the BFF: **Internal ALB :3000**, **security groups**, **Aurora connectivity**, or **DB schema** — not JWT code.
+
 1. **`url.txt`** must be the **External ALB** URL (with port if required), e.g. `http://your-external-alb.us-east-1.elb.amazonaws.com` — the grader calls this. It is **not** the Internal ALB.
 2. **External ALB returns 400** if `X-Client-Type` is missing (AWS default). Your BFF code cannot change that; the grader must send `Web` / `iOS` / `Android` on API calls. If a test expects **401** for bad JWT, it must still reach the BFF (usually with a valid `X-Client-Type`).
 3. On **each** EC2 running a BFF: `URL_BASE_BACKEND_SERVICES=http://<InternalALBDNSName>:3000` (**port 3000**, not 80). Wrong host/port → **502** or **400** on proxied calls.
 4. After any code change: rebuild **all four** images for **`linux/amd64`**, push, **`docker pull` + restart** on **all four** EC2 instances. Mismatched versions (old BFF, new book service) cause confusing failures.
 5. Run **`scripts/init_db.sql`** on the Aurora **writer** so schema matches the services (`books` / `customers` tables with full columns).
-6. From a machine that can reach your External ALB, smoke-test (replace URL, token, ISBN):
+6. **Trailing slashes:** Services use `strict_slashes = False` so `POST /books/` does not 308-redirect and drop the JSON body (some graders use trailing slashes).
+7. On an EC2 running a **BFF**, check the proxy target:  
+   `docker exec web-bff printenv URL_BASE_BACKEND_SERVICES` → must be `http://<Internal-ALB-DNS>:3000`.  
+   Then from that EC2: `curl -sS -o /dev/null -w "%{http_code}\n" "http://127.0.0.1:80/status"` and  
+   `curl -sS -o /dev/null -w "%{http_code}\n" -H "X-Client-Type: Web" -H "Authorization: Bearer <jwt>" "http://127.0.0.1:80/books"` → expect **200** (not **502**). **502** = BFF cannot reach Internal ALB or backends.
+
+8. From a machine that can reach your External ALB, smoke-test (replace URL, token, ISBN):
 
    ```bash
    curl -sS -o /dev/null -w "%{http_code}" "http://YOUR-EXTERNAL-ALB/status"
