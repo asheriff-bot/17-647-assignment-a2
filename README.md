@@ -117,7 +117,7 @@ assign_2_aws/
 ├── book_service/           # Book microservice (port 3000)
 ├── web_bff/                # Web BFF (port 80)
 ├── mobile_bff/             # Mobile BFF (port 80)
-├── shared/                 # JWT validation (used by BFFs)
+├── shared/                 # `jwt_utils`, `bff_auth` (used by BFFs)
 ├── scripts/
 │   ├── init_db.sql         # DB schema and sample data
 │   └── nginx-backend.conf  # Local backend router config
@@ -125,6 +125,20 @@ assign_2_aws/
 ├── deploy.md               # Step-by-step build & AWS deploy
 └── README.md
 ```
+
+## Gradescope / autograder still failing?
+
+1. **`url.txt`** must be the **External ALB** URL (with port if required), e.g. `http://your-external-alb.us-east-1.elb.amazonaws.com` — the grader calls this. It is **not** the Internal ALB.
+2. **External ALB returns 400** if `X-Client-Type` is missing (AWS default). Your BFF code cannot change that; the grader must send `Web` / `iOS` / `Android` on API calls. If a test expects **401** for bad JWT, it must still reach the BFF (usually with a valid `X-Client-Type`).
+3. On **each** EC2 running a BFF: `URL_BASE_BACKEND_SERVICES=http://<InternalALBDNSName>:3000` (**port 3000**, not 80). Wrong host/port → **502** or **400** on proxied calls.
+4. After any code change: rebuild **all four** images for **`linux/amd64`**, push, **`docker pull` + restart** on **all four** EC2 instances. Mismatched versions (old BFF, new book service) cause confusing failures.
+5. Run **`scripts/init_db.sql`** on the Aurora **writer** so schema matches the services (`books` / `customers` tables with full columns).
+6. From a machine that can reach your External ALB, smoke-test (replace URL, token, ISBN):
+
+   ```bash
+   curl -sS -o /dev/null -w "%{http_code}" "http://YOUR-EXTERNAL-ALB/status"
+   curl -sS -o /dev/null -w "%{http_code}" -H "X-Client-Type: Web" -H "Authorization: Bearer YOUR_JWT" "http://YOUR-EXTERNAL-ALB/books"
+   ```
 
 ## Production readiness
 

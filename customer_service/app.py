@@ -30,10 +30,17 @@ US_STATES = {
 }
 
 EMAIL_RE = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
+# Path segment must be a plain integer id (invalid shapes → 400 per A1)
+_CUSTOMER_PATH_ID = re.compile(r"^[+-]?\d+$")
 
 
 def get_db():
     return pymysql.connect(**DB_CONFIG)
+
+
+def _read_json_dict():
+    data = request.get_json(force=True, silent=True)
+    return data if isinstance(data, dict) else None
 
 
 def row_to_customer_json(row: dict) -> dict:
@@ -147,10 +154,12 @@ def list_or_query_customers():
 
 @app.route("/customers/<customer_id>", methods=["GET"])
 def get_customer(customer_id):
-    # isdigit() rejects valid ints like +123, -1, etc.; autograder "unknown id" may use those → must 404 after DB lookup
+    s = str(customer_id).strip()
+    if not _CUSTOMER_PATH_ID.match(s):
+        return jsonify({}), 400
     try:
-        cid = int(str(customer_id).strip(), 10)
-    except (TypeError, ValueError):
+        cid = int(s, 10)
+    except ValueError:
         return jsonify({}), 400
     try:
         conn = get_db()
@@ -170,8 +179,8 @@ def get_customer(customer_id):
 
 @app.route("/customers", methods=["POST"])
 def create_customer():
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
+    data = _read_json_dict()
+    if data is None:
         return jsonify({}), 400
     normalize_customer_post_body(data)
     if not post_customer_required(data):
