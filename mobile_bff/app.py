@@ -15,7 +15,8 @@ from shared.client_headers import require_mobile_client
 from shared.jwt_utils import require_jwt
 
 app = Flask(__name__)
-BACKEND_BASE = os.environ.get("URL_BASE_BACKEND_SERVICES", "http://localhost:3000").rstrip("/")
+_backend = (os.environ.get("URL_BASE_BACKEND_SERVICES") or "").strip()
+BACKEND_BASE = (_backend or "http://localhost:3000").rstrip("/")
 
 CUSTOMER_ATTRS_TO_REMOVE = {"address", "address2", "city", "state", "zipcode"}
 
@@ -29,10 +30,18 @@ def proxy_to_backend(path: str, method: str = "GET", **kwargs):
         for k, v in request.headers
         if k.lower() not in ("host", "authorization")
     }
-    if request.get_data():
+    m = (method or "GET").upper()
+    if m in ("GET", "HEAD"):
+        headers = {
+            k: v
+            for k, v in headers.items()
+            if k.lower()
+            not in ("content-length", "content-type", "transfer-encoding")
+        }
+    elif request.get_data():
         kwargs["data"] = request.get_data()
     try:
-        r = requests.request(method, url, timeout=30, headers=headers, **kwargs)
+        r = requests.request(m, url, timeout=30, headers=headers, **kwargs)
         return r.content, r.status_code, dict(r.headers)
     except requests.RequestException:
         return b"Bad Gateway", 502, {}
@@ -98,8 +107,8 @@ def status():
 
 
 @app.route("/customers", methods=["GET", "POST"])
-@require_mobile_client
 @require_jwt
+@require_mobile_client
 def customers():
     body, status_code, headers = proxy_to_backend("/customers", method=request.method)
     return build_response(
@@ -108,8 +117,8 @@ def customers():
 
 
 @app.route("/customers/<path:subpath>", methods=["GET"])
-@require_mobile_client
 @require_jwt
+@require_mobile_client
 def customer_by_id(subpath):
     body, status_code, headers = proxy_to_backend(f"/customers/{subpath}")
     return build_response(
@@ -118,16 +127,16 @@ def customer_by_id(subpath):
 
 
 @app.route("/books", methods=["GET", "POST"])
-@require_mobile_client
 @require_jwt
+@require_mobile_client
 def books():
     body, status_code, headers = proxy_to_backend("/books", method=request.method)
     return build_response(body, status_code, headers, apply_book=True, apply_customer=False)
 
 
 @app.route("/books/<path:subpath>", methods=["GET", "PUT"])
-@require_mobile_client
 @require_jwt
+@require_mobile_client
 def book_subpath(subpath):
     body, status_code, headers = proxy_to_backend(f"/books/{subpath}", method=request.method)
     return build_response(body, status_code, headers, apply_book=True, apply_customer=False)

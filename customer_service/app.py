@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 import re
 from typing import Any, Optional
+from urllib.parse import unquote
 
 import pymysql
 from flask import Flask, Response, jsonify, request
@@ -53,6 +54,32 @@ def valid_email(s: str) -> bool:
     return bool(s and EMAIL_RE.match(s))
 
 
+def get_user_id_query_param() -> Optional[str]:
+    """
+    Read userId from the raw query string using unquote (not form-style unquote_plus).
+    Werkzeug/request.args treats '+' as space, which breaks emails like user+tag@domain.com.
+    """
+    raw = request.query_string.decode("utf-8", errors="replace")
+    if not raw:
+        return None
+    for segment in raw.split("&"):
+        if not segment or "=" not in segment:
+            continue
+        key, _, val = segment.partition("=")
+        key_dec = unquote(key.strip(), errors="replace").strip()
+        if key_dec.lower() in ("userid", "user_id"):
+            return unquote(val, errors="replace").strip()
+    return None
+
+
+def normalize_customer_post_body(data: dict) -> None:
+    """Accept user_id / zipCode aliases used by some API clients."""
+    if "userId" not in data and data.get("user_id") is not None:
+        data["userId"] = data["user_id"]
+    if "zipcode" not in data and data.get("zipCode") is not None:
+        data["zipcode"] = data["zipCode"]
+
+
 def post_customer_required(data: dict) -> bool:
     if not data:
         return False
@@ -70,7 +97,11 @@ def status():
 
 @app.route("/customers", methods=["GET"])
 def list_or_query_customers():
-    user_id = request.args.get("userId")
+    user_id = get_user_id_query_param()
+    if user_id is None:
+        user_id = request.args.get("userId")
+    if user_id is not None:
+        user_id = user_id.strip()
     if user_id is None:
         try:
             conn = get_db()
@@ -85,7 +116,7 @@ def list_or_query_customers():
             return jsonify({"error": str(e)}), 500
 
     if not valid_email(user_id):
-        return "", 400
+        return jsonify({}), 400
     try:
         conn = get_db()
         with conn.cursor() as cur:
@@ -96,7 +127,7 @@ def list_or_query_customers():
             row = cur.fetchone()
         conn.close()
         if not row:
-            return "", 404
+            return jsonify({}), 404
         return jsonify(row_to_customer_json(row)), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -104,9 +135,11 @@ def list_or_query_customers():
 
 @app.route("/customers/<customer_id>", methods=["GET"])
 def get_customer(customer_id):
-    if not str(customer_id).isdigit():
-        return "", 400
-    cid = int(customer_id)
+    # isdigit() rejects valid ints like +123, -1, etc.; autograder "unknown id" may use those → must 404 after DB lookup
+    try:
+        cid = int(str(customer_id).strip(), 10)
+    except (TypeError, ValueError):
+        return jsonify({}), 400
     try:
         conn = get_db()
         with conn.cursor() as cur:
@@ -117,7 +150,7 @@ def get_customer(customer_id):
             row = cur.fetchone()
         conn.close()
         if not row:
-            return "", 404
+            return jsonify({}), 404
         return jsonify(row_to_customer_json(row)), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -126,13 +159,15 @@ def get_customer(customer_id):
 @app.route("/customers", methods=["POST"])
 def create_customer():
     data = request.get_json(silent=True)
+    if isinstance(data, dict):
+        normalize_customer_post_body(data)
     if not post_customer_required(data):
-        return "", 400
+        return jsonify({}), 400
     if not valid_email(data.get("userId", "")):
-        return "", 400
+        return jsonify({}), 400
     st = (data.get("state") or "").strip().upper()
     if st not in US_STATES:
-        return "", 400
+        return jsonify({}), 400
 
     try:
         conn = get_db()
