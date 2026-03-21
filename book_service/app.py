@@ -17,8 +17,13 @@ app = Flask(__name__)
 # Avoid 308 redirect on /books/ → /books that drops POST body (breaks autograders)
 app.url_map.strict_slashes = False
 
+def _db_host() -> str:
+    """RDS hostname: DB_HOST preferred; DB_ENDPOINT matches CF output / mysql CLI variable name."""
+    return (os.environ.get("DB_HOST") or os.environ.get("DB_ENDPOINT") or "localhost").strip()
+
+
 DB_CONFIG = {
-    "host": os.environ.get("DB_HOST", "localhost"),
+    "host": _db_host(),
     "user": os.environ.get("DB_USER", "root"),
     "password": os.environ.get("DB_PASSWORD", ""),
     "database": os.environ.get("DB_NAME", "bookstore"),
@@ -318,6 +323,7 @@ def book_by_isbn(isbn):
         return jsonify({"error": str(e)}), 500
 
 
+# A2 alternate path; register after /books/<isbn> — Flask matches longer static prefix first.
 @app.route("/books/isbn/<isbn>", methods=["GET"])
 def get_book_by_isbn_path(isbn):
     return book_by_isbn(isbn)

@@ -14,8 +14,12 @@ from flask import Flask, Response, jsonify, request
 app = Flask(__name__)
 app.url_map.strict_slashes = False
 
+def _db_host() -> str:
+    return (os.environ.get("DB_HOST") or os.environ.get("DB_ENDPOINT") or "localhost").strip()
+
+
 DB_CONFIG = {
-    "host": os.environ.get("DB_HOST", "localhost"),
+    "host": _db_host(),
     "user": os.environ.get("DB_USER", "root"),
     "password": os.environ.get("DB_PASSWORD", ""),
     "database": os.environ.get("DB_NAME", "bookstore"),

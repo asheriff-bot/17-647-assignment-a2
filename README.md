@@ -130,6 +130,8 @@ assign_2_aws/
 
 **Pattern:** Tests that only need the BFF (**JWT**, **headers**, **`GET /status`**) pass, but **book/customer** tests fail → the problem is almost always **after** the BFF: **Internal ALB :3000**, **security groups**, **Aurora connectivity**, or **DB schema** — not JWT code.
 
+**Docker env on book/customer EC2s:** Services read **`DB_HOST`** (or **`DB_ENDPOINT`** as an alias). If you only export `DB_ENDPOINT` on your laptop for `mysql` but pass **no** `DB_HOST` into `docker run`, the container defaults to **`localhost`** → every DB call fails (**500**). Run: `docker exec book-svc printenv DB_HOST` (and `DB_ENDPOINT`) — one of them must be your **RDS cluster endpoint**.
+
 1. **`url.txt`** must be the **External ALB** URL (with port if required), e.g. `http://your-external-alb.us-east-1.elb.amazonaws.com` — the grader calls this. It is **not** the Internal ALB.
 2. **External ALB returns 400** if `X-Client-Type` is missing (AWS default). Your BFF code cannot change that; the grader must send `Web` / `iOS` / `Android` on API calls. If a test expects **401** for bad JWT, it must still reach the BFF (usually with a valid `X-Client-Type`).
 3. On **each** EC2 running a BFF: `URL_BASE_BACKEND_SERVICES=http://<InternalALBDNSName>:3000` (**port 3000**, not 80). Wrong host/port → **502** or **400** on proxied calls.

@@ -61,6 +61,8 @@ DB_USER="<DBUsername>"
 DB_PASSWORD="<DBPassword>"
 ```
 
+**Book and customer containers** accept **`DB_HOST`** or **`DB_ENDPOINT`** for the RDS hostname (same value as `DBClusterEndpoint`). If neither is set, they use `localhost` and all DB calls fail.
+
 ---
 
 ## Phase 3: Initialize the Database
