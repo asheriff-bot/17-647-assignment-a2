@@ -1,17 +1,16 @@
 """
-Web BFF - Backend for Web frontend. Port 80.
-Requires X-Client-Type: Web (enforced by ALB) and valid JWT.
-Forwards /customers and /books to Internal ALB (backend base URL) with no response transformation.
+Web BFF — A1/A2: proxy to Internal ALB; JWT + X-Client-Type: Web on protected routes; /status = OK.
 """
 import os
 import requests
-from flask import Flask, request, Response
+from flask import Flask, Response, request
 
-# Add parent (local) and cwd (Docker) so shared.jwt_utils is found
 import sys
+
 _app_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _app_dir)
 sys.path.insert(0, os.path.join(_app_dir, ".."))
+from shared.client_headers import require_web_client
 from shared.jwt_utils import require_jwt
 
 app = Flask(__name__)
@@ -19,68 +18,67 @@ BACKEND_BASE = os.environ.get("URL_BASE_BACKEND_SERVICES", "http://localhost:300
 
 
 def proxy_to_backend(path: str, method: str = "GET", **kwargs):
-    """Forward request to backend and return (body, status_code, headers)."""
     url = f"{BACKEND_BASE}{path}"
     if request.query_string:
         url += "?" + request.query_string.decode()
-    headers = {k: v for k, v in request.headers if k.lower() not in ("host", "authorization")}
+    headers = {
+        k: v
+        for k, v in request.headers
+        if k.lower() not in ("host", "authorization")
+    }
     if request.get_data():
         kwargs["data"] = request.get_data()
     try:
-        r = requests.request(method, url, timeout=10, headers=headers, **kwargs)
+        r = requests.request(method, url, timeout=30, headers=headers, **kwargs)
         return r.content, r.status_code, dict(r.headers)
     except requests.RequestException:
         return b"Bad Gateway", 502, {}
 
 
+def build_response(body, status_code, headers):
+    resp = Response(body, status=status_code)
+    for k, v in headers.items():
+        lk = k.lower()
+        if lk in ("content-type", "content-length", "location"):
+            resp.headers[k] = v
+    return resp
+
+
 @app.route("/status", methods=["GET"])
 def status():
-    """Health check - no JWT required for ALB."""
-    return "", 200
+    return Response("OK", status=200, mimetype="text/plain")
 
 
 @app.route("/customers", methods=["GET", "POST"])
+@require_web_client
 @require_jwt
 def customers():
     body, status_code, headers = proxy_to_backend("/customers", method=request.method)
-    resp = Response(body, status=status_code)
-    for k, v in headers.items():
-        if k.lower() in ("content-type", "content-length"):
-            resp.headers[k] = v
-    return resp
+    return build_response(body, status_code, headers)
 
 
 @app.route("/customers/<path:subpath>", methods=["GET"])
+@require_web_client
 @require_jwt
 def customer_by_id(subpath):
     body, status_code, headers = proxy_to_backend(f"/customers/{subpath}")
-    resp = Response(body, status=status_code)
-    for k, v in headers.items():
-        if k.lower() in ("content-type", "content-length"):
-            resp.headers[k] = v
-    return resp
+    return build_response(body, status_code, headers)
 
 
 @app.route("/books", methods=["GET", "POST"])
+@require_web_client
 @require_jwt
 def books():
     body, status_code, headers = proxy_to_backend("/books", method=request.method)
-    resp = Response(body, status=status_code)
-    for k, v in headers.items():
-        if k.lower() in ("content-type", "content-length"):
-            resp.headers[k] = v
-    return resp
+    return build_response(body, status_code, headers)
 
 
-@app.route("/books/<path:subpath>", methods=["GET"])
+@app.route("/books/<path:subpath>", methods=["GET", "PUT"])
+@require_web_client
 @require_jwt
-def book_by_isbn(subpath):
-    body, status_code, headers = proxy_to_backend(f"/books/{subpath}")
-    resp = Response(body, status=status_code)
-    for k, v in headers.items():
-        if k.lower() in ("content-type", "content-length"):
-            resp.headers[k] = v
-    return resp
+def book_subpath(subpath):
+    body, status_code, headers = proxy_to_backend(f"/books/{subpath}", method=request.method)
+    return build_response(body, status_code, headers)
 
 
 if __name__ == "__main__":

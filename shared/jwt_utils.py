@@ -27,8 +27,10 @@ def validate_jwt(token_str):
     if token_str.lower().startswith("bearer "):
         token_str = token_str[7:].strip()
     try:
+        # PyJWT 2.x requires algorithms= even when signature verification is off
         payload = jwt.decode(
             token_str,
+            algorithms=["HS256", "RS256"],
             options={"verify_signature": False},
         )
     except jwt.InvalidTokenError:
