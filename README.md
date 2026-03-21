@@ -137,13 +137,14 @@ assign_2_aws/
 3. On **each** EC2 running a BFF: `URL_BASE_BACKEND_SERVICES=http://<InternalALBDNSName>:3000` (**port 3000**, not 80). Wrong host/port → **502** or **400** on proxied calls.
 4. After any code change: rebuild **all four** images for **`linux/amd64`**, push, **`docker pull` + restart** on **all four** EC2 instances. Mismatched versions (old BFF, new book service) cause confusing failures.
 5. Run **`scripts/init_db.sql`** on the Aurora **writer** so schema matches the services (`books` / `customers` tables with full columns).
-6. **Trailing slashes:** Services use `strict_slashes = False` so `POST /books/` does not 308-redirect and drop the JSON body (some graders use trailing slashes).
-7. On an EC2 running a **BFF**, check the proxy target:  
+6. **Mobile BFF (A2):** Response transforms (`non-fiction` → `3`, strip address fields) apply **only to GET** with status **200**, not to POST/PUT **201/200** bodies — otherwise autograders comparing A1 JSON shapes will fail.
+7. **Trailing slashes:** Services use `strict_slashes = False` so `POST /books/` does not 308-redirect and drop the JSON body (some graders use trailing slashes).
+8. On an EC2 running a **BFF**, check the proxy target:  
    `docker exec web-bff printenv URL_BASE_BACKEND_SERVICES` → must be `http://<Internal-ALB-DNS>:3000`.  
    Then from that EC2: `curl -sS -o /dev/null -w "%{http_code}\n" "http://127.0.0.1:80/status"` and  
    `curl -sS -o /dev/null -w "%{http_code}\n" -H "X-Client-Type: Web" -H "Authorization: Bearer <jwt>" "http://127.0.0.1:80/books"` → expect **200** (not **502**). **502** = BFF cannot reach Internal ALB or backends.
 
-8. From a machine that can reach your External ALB, smoke-test (replace URL, token, ISBN):
+9. From a machine that can reach your External ALB, smoke-test (replace URL, token, ISBN):
 
    ```bash
    curl -sS -o /dev/null -w "%{http_code}" "http://YOUR-EXTERNAL-ALB/status"
