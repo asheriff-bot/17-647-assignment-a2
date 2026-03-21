@@ -1,5 +1,5 @@
 """
-Mobile BFF — A2: X-Client-Type iOS/Android + JWT; genre non-fiction → 3; strip address fields.
+Mobile BFF — A2: JWT then X-Client-Type; genre non-fiction → 3; strip address fields.
 """
 import json
 import os
@@ -11,12 +11,13 @@ import sys
 _app_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _app_dir)
 sys.path.insert(0, os.path.join(_app_dir, ".."))
-from shared.client_headers import require_mobile_client
-from shared.jwt_utils import require_jwt
+from shared.bff_auth import require_mobile_bff
 
 app = Flask(__name__)
 _backend = (os.environ.get("URL_BASE_BACKEND_SERVICES") or "").strip()
 BACKEND_BASE = (_backend or "http://localhost:3000").rstrip("/")
+
+PROXY_TIMEOUT = int(os.environ.get("BFF_PROXY_TIMEOUT", "120"))
 
 CUSTOMER_ATTRS_TO_REMOVE = {"address", "address2", "city", "state", "zipcode"}
 
@@ -25,23 +26,28 @@ def proxy_to_backend(path: str, method: str = "GET", **kwargs):
     url = f"{BACKEND_BASE}{path}"
     if request.query_string:
         url += "?" + request.query_string.decode()
-    headers = {
-        k: v
-        for k, v in request.headers
-        if k.lower() not in ("host", "authorization")
-    }
+
     m = (method or "GET").upper()
+    skip = {
+        "host",
+        "authorization",
+        "x-client-type",
+        "content-length",
+        "transfer-encoding",
+    }
+    headers = {k: v for k, v in request.headers if k.lower() not in skip}
+
     if m in ("GET", "HEAD"):
         headers = {
             k: v
             for k, v in headers.items()
-            if k.lower()
-            not in ("content-length", "content-type", "transfer-encoding")
+            if k.lower() not in ("content-type", "content-length", "transfer-encoding")
         }
-    elif request.get_data():
+    else:
         kwargs["data"] = request.get_data()
+
     try:
-        r = requests.request(m, url, timeout=30, headers=headers, **kwargs)
+        r = requests.request(m, url, timeout=PROXY_TIMEOUT, headers=headers, **kwargs)
         return r.content, r.status_code, dict(r.headers)
     except requests.RequestException:
         return b"Bad Gateway", 502, {}
@@ -107,8 +113,7 @@ def status():
 
 
 @app.route("/customers", methods=["GET", "POST"])
-@require_jwt
-@require_mobile_client
+@require_mobile_bff
 def customers():
     body, status_code, headers = proxy_to_backend("/customers", method=request.method)
     return build_response(
@@ -117,8 +122,7 @@ def customers():
 
 
 @app.route("/customers/<path:subpath>", methods=["GET"])
-@require_jwt
-@require_mobile_client
+@require_mobile_bff
 def customer_by_id(subpath):
     body, status_code, headers = proxy_to_backend(f"/customers/{subpath}")
     return build_response(
@@ -127,16 +131,14 @@ def customer_by_id(subpath):
 
 
 @app.route("/books", methods=["GET", "POST"])
-@require_jwt
-@require_mobile_client
+@require_mobile_bff
 def books():
     body, status_code, headers = proxy_to_backend("/books", method=request.method)
     return build_response(body, status_code, headers, apply_book=True, apply_customer=False)
 
 
 @app.route("/books/<path:subpath>", methods=["GET", "PUT"])
-@require_jwt
-@require_mobile_client
+@require_mobile_bff
 def book_subpath(subpath):
     body, status_code, headers = proxy_to_backend(f"/books/{subpath}", method=request.method)
     return build_response(body, status_code, headers, apply_book=True, apply_customer=False)

@@ -11,9 +11,10 @@ Python microservices for the bookstore e-commerce system, deployable on AWS with
 | Customer service     | 3000 | EC2BookstoreA, D     |
 | Book service         | 3000 | EC2BookstoreB, C     |
 
-- **External ALB** routes by `X-Client-Type`: `Web` → Web BFF, `iOS`/`Android` → Mobile BFF. Missing header → 400.
-- **BFFs** require `Authorization: Bearer <JWT>`. Invalid/missing token → 401.
-- **Internal ALB** routes `/customers*` → Customer service, `/books*` → Book service (port 3000).
+- **External ALB** routes by `X-Client-Type`: `Web` → Web BFF, `iOS`/`Android` → Mobile BFF. Missing header → **400** (ALB default — request never reaches your BFF).
+- **BFFs** check **JWT first (401)**, then **`X-Client-Type` (400)**. Use `shared/bff_auth.py` so order is guaranteed.
+- **Internal ALB** routes `/customers*` → Customer service, `/books*` → Book service on **port 3000** (not 80).
+- **`URL_BASE_BACKEND_SERVICES`** on every BFF container must be **`http://<InternalALBDNSName>:3000`**. If you point this at the **External** ALB or wrong port, you will see **400** or **502** on proxied calls.
 
 ## JWT Validation (BFFs)
 

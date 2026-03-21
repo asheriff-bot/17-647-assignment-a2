@@ -73,11 +73,23 @@ def get_user_id_query_param() -> Optional[str]:
 
 
 def normalize_customer_post_body(data: dict) -> None:
-    """Accept user_id / zipCode aliases used by some API clients."""
-    if "userId" not in data and data.get("user_id") is not None:
-        data["userId"] = data["user_id"]
-    if "zipcode" not in data and data.get("zipCode") is not None:
-        data["zipcode"] = data["zipCode"]
+    """Map alternate JSON keys (snake_case, PascalCase) to A1 canonical names."""
+    aliases = (
+        ("userId", ("user_id", "UserId", "USERID")),
+        ("name", ("Name",)),
+        ("phone", ("Phone",)),
+        ("address", ("Address",)),
+        ("address2", ("Address2",)),
+        ("city", ("City",)),
+        ("state", ("State",)),
+        ("zipcode", ("zipCode", "Zipcode", "ZipCode", "ZIPCODE")),
+    )
+    for canonical, alts in aliases:
+        if canonical not in data:
+            for a in alts:
+                if a in data:
+                    data[canonical] = data[a]
+                    break
 
 
 def post_customer_required(data: dict) -> bool:
@@ -159,8 +171,9 @@ def get_customer(customer_id):
 @app.route("/customers", methods=["POST"])
 def create_customer():
     data = request.get_json(silent=True)
-    if isinstance(data, dict):
-        normalize_customer_post_body(data)
+    if not isinstance(data, dict):
+        return jsonify({}), 400
+    normalize_customer_post_body(data)
     if not post_customer_required(data):
         return jsonify({}), 400
     if not valid_email(data.get("userId", "")):

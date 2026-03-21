@@ -1,5 +1,5 @@
 """
-Web BFF — A1/A2: proxy to Internal ALB; JWT + X-Client-Type: Web on protected routes; /status = OK.
+Web BFF — A1/A2: proxy to Internal ALB (:3000); JWT then X-Client-Type; /status public.
 """
 import os
 import requests
@@ -10,37 +10,45 @@ import sys
 _app_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _app_dir)
 sys.path.insert(0, os.path.join(_app_dir, ".."))
-from shared.client_headers import require_web_client
-from shared.jwt_utils import require_jwt
+from shared.bff_auth import require_web_bff
 
 app = Flask(__name__)
-# Empty env var would break requests URL; treat as unset
 _backend = (os.environ.get("URL_BASE_BACKEND_SERVICES") or "").strip()
 BACKEND_BASE = (_backend or "http://localhost:3000").rstrip("/")
+
+# Book POST may call LLM synchronously; allow headroom
+PROXY_TIMEOUT = int(os.environ.get("BFF_PROXY_TIMEOUT", "120"))
 
 
 def proxy_to_backend(path: str, method: str = "GET", **kwargs):
     url = f"{BACKEND_BASE}{path}"
     if request.query_string:
         url += "?" + request.query_string.decode()
-    headers = {
-        k: v
-        for k, v in request.headers
-        if k.lower() not in ("host", "authorization")
-    }
+
     m = (method or "GET").upper()
-    # GET/HEAD with a body or Content-Length confuses Flask/Werkzeug (400). Never forward bodies for safe methods.
+
+    # Never forward these to internal services / Internal ALB (path routing only).
+    skip = {
+        "host",
+        "authorization",
+        "x-client-type",
+        "content-length",
+        "transfer-encoding",
+    }
+    headers = {k: v for k, v in request.headers if k.lower() not in skip}
+
     if m in ("GET", "HEAD"):
         headers = {
             k: v
             for k, v in headers.items()
-            if k.lower()
-            not in ("content-length", "content-type", "transfer-encoding")
+            if k.lower() not in ("content-type", "content-length", "transfer-encoding")
         }
-    elif request.get_data():
+    else:
+        # POST/PUT/PATCH/DELETE: always pass body bytes; requests sets Content-Length
         kwargs["data"] = request.get_data()
+
     try:
-        r = requests.request(m, url, timeout=30, headers=headers, **kwargs)
+        r = requests.request(m, url, timeout=PROXY_TIMEOUT, headers=headers, **kwargs)
         return r.content, r.status_code, dict(r.headers)
     except requests.RequestException:
         return b"Bad Gateway", 502, {}
@@ -61,32 +69,28 @@ def status():
 
 
 @app.route("/customers", methods=["GET", "POST"])
-@require_jwt
-@require_web_client
+@require_web_bff
 def customers():
     body, status_code, headers = proxy_to_backend("/customers", method=request.method)
     return build_response(body, status_code, headers)
 
 
 @app.route("/customers/<path:subpath>", methods=["GET"])
-@require_jwt
-@require_web_client
+@require_web_bff
 def customer_by_id(subpath):
     body, status_code, headers = proxy_to_backend(f"/customers/{subpath}")
     return build_response(body, status_code, headers)
 
 
 @app.route("/books", methods=["GET", "POST"])
-@require_jwt
-@require_web_client
+@require_web_bff
 def books():
     body, status_code, headers = proxy_to_backend("/books", method=request.method)
     return build_response(body, status_code, headers)
 
 
 @app.route("/books/<path:subpath>", methods=["GET", "PUT"])
-@require_jwt
-@require_web_client
+@require_web_bff
 def book_subpath(subpath):
     body, status_code, headers = proxy_to_backend(f"/books/{subpath}", method=request.method)
     return build_response(body, status_code, headers)
