@@ -92,7 +92,8 @@ def transform_customer_response(data: bytes) -> bytes:
 
 
 def build_response(body, status_code, headers, apply_book=False, apply_customer=False):
-    if body and status_code in (200, 201):
+    # A2: genre → 3 and stripped customer fields apply only to **GET** responses, not POST/PUT 201/200.
+    if body and request.method == "GET" and status_code == 200:
         if apply_book:
             body = transform_book_response(body)
         if apply_customer:

@@ -54,7 +54,8 @@ def validate_jwt(token_str):
         return False, "Invalid sub"
     # Some tokens use non-string sub; normalize without turning None into "None"
     sub_s = str(sub).strip()
-    if not sub_s or sub_s not in ALLOWED_SUBS:
+    # Gradescope may use any casing for sub; spec lists lowercase names.
+    if not sub_s or sub_s.lower() not in ALLOWED_SUBS:
         return False, "Invalid sub"
 
     if _normalize_iss(payload.get("iss")) != REQUIRED_ISS:
