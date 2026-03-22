@@ -13,14 +13,13 @@ sys.path.insert(0, _app_dir)
 sys.path.insert(0, os.path.join(_app_dir, ".."))
 from shared.bff_auth import require_mobile_bff
 from shared.bff_response import absolute_location_header
-from shared.envutil import env_int
 
 app = Flask(__name__)
 app.url_map.strict_slashes = False
 _backend = (os.environ.get("URL_BASE_BACKEND_SERVICES") or "").strip()
 BACKEND_BASE = (_backend or "http://localhost:3000").rstrip("/")
 
-PROXY_TIMEOUT = env_int("BFF_PROXY_TIMEOUT", 120)
+PROXY_TIMEOUT = int(os.environ.get("BFF_PROXY_TIMEOUT", "120"))
 
 CUSTOMER_ATTRS_TO_REMOVE = {"address", "address2", "city", "state", "zipcode"}
 
@@ -113,25 +112,11 @@ def _a2_should_transform_customer_get() -> bool:
     return p.startswith("/customers/")
 
 
-def _a2_should_transform_book_write() -> bool:
-    """POST create or PUT update returns one book object; apply genre rule like GET-one."""
-    p = _path_norm()
-    if request.method == "POST" and p == "/books":
-        return True
-    if request.method == "PUT" and p.startswith("/books/"):
-        return True
-    return False
-
-
 def build_response(body, status_code, headers, apply_book=False, apply_customer=False):
-    # A2: genre "non-fiction" -> 3 for mobile on single-book GET, POST 201, PUT 200.
-    # Do not transform GET /books list.
-    if body and apply_book:
-        if request.method == "GET" and status_code == 200 and _a2_should_transform_book_get():
-            body = transform_book_response(body)
-        elif status_code in (200, 201) and _a2_should_transform_book_write():
-            body = transform_book_response(body)
+    # A2: transforms only on specific GET success responses (not list-all, not POST/PUT).
     if body and request.method == "GET" and status_code == 200:
+        if apply_book and _a2_should_transform_book_get():
+            body = transform_book_response(body)
         if apply_customer and _a2_should_transform_customer_get():
             body = transform_customer_response(body)
     resp = Response(body, status=status_code)

@@ -9,7 +9,6 @@ from typing import Any, Optional
 from urllib.parse import unquote
 
 import pymysql
-from pymysql.err import IntegrityError
 from flask import Flask, Response, jsonify, request
 
 app = Flask(__name__)
@@ -88,7 +87,7 @@ def get_user_id_query_param() -> Optional[str]:
 def normalize_customer_post_body(data: dict) -> None:
     """Map alternate JSON keys (snake_case, PascalCase) to A1 canonical names."""
     aliases = (
-        ("userId", ("user_id", "UserId", "USERID", "UserID", "userID", "email", "Email")),
+        ("userId", ("user_id", "UserId", "USERID")),
         ("name", ("Name",)),
         ("phone", ("Phone",)),
         ("address", ("Address",)),
@@ -98,22 +97,11 @@ def normalize_customer_post_body(data: dict) -> None:
         ("zipcode", ("zipCode", "Zipcode", "ZipCode", "ZIPCODE")),
     )
     for canonical, alts in aliases:
-        if canonical in data and data.get(canonical) is not None:
-            continue
-        for a in alts:
-            if a in data:
-                data[canonical] = data[a]
-                break
-
-
-def canonical_email_user_id(v: Any) -> Optional[str]:
-    """Strip + lowercase for storage and duplicate checks (matches typical UNIQUE email semantics)."""
-    if v is None:
-        return None
-    s = str(v).strip()
-    if not s:
-        return None
-    return s.lower()
+        if canonical not in data:
+            for a in alts:
+                if a in data:
+                    data[canonical] = data[a]
+                    break
 
 
 def _non_empty_scalar(v: Any) -> bool:
@@ -147,12 +135,7 @@ def list_or_query_customers():
     if user_id is None:
         user_id = request.args.get("userId")
     if user_id is not None:
-        stripped = str(user_id).strip()
-        if not stripped:
-            return jsonify({}), 400
-        user_id = canonical_email_user_id(stripped)
-        if not user_id:
-            return jsonify({}), 400
+        user_id = user_id.strip()
     if user_id is None:
         try:
             conn = get_db()
@@ -215,9 +198,6 @@ def create_customer():
     if data is None:
         return jsonify({}), 400
     normalize_customer_post_body(data)
-    uid = canonical_email_user_id(data.get("userId"))
-    if uid:
-        data["userId"] = uid
     if not post_customer_required(data):
         return jsonify({}), 400
     if not valid_email(data.get("userId", "")):
@@ -226,7 +206,6 @@ def create_customer():
     if st not in US_STATES:
         return jsonify({}), 400
 
-    conn = None
     try:
         conn = get_db()
         with conn.cursor() as cur:
@@ -235,6 +214,7 @@ def create_customer():
                 (data["userId"],),
             )
             if cur.fetchone():
+                conn.close()
                 return jsonify({"message": "This user ID already exists in the system."}), 422
             cur.execute(
                 """INSERT INTO customers (userId, name, phone, address, address2, city, state, zipcode)
@@ -251,6 +231,7 @@ def create_customer():
                 ),
             )
             cid = cur.lastrowid
+        conn.close()
         body = row_to_customer_json(
             {
                 "id": cid,
@@ -268,18 +249,8 @@ def create_customer():
         resp.status_code = 201
         resp.headers["Location"] = f"/customers/{cid}"
         return resp
-    except IntegrityError as e:
-        if e.args and e.args[0] == 1062:
-            return jsonify({"message": "This user ID already exists in the system."}), 422
-        return jsonify({"error": str(e)}), 500
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    finally:
-        if conn is not None:
-            try:
-                conn.close()
-            except Exception:
-                pass
 
 
 if __name__ == "__main__":
