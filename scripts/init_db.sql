@@ -29,8 +29,9 @@ CREATE TABLE books (
   summary TEXT NULL
 );
 
+-- Seed ISBNs use 978900000000x so autograder POSTs (e.g. LLM / integration tests) do not collide with real 978-0-13-* rows and get 422 duplicate.
 INSERT INTO books (isbn, title, author, description, genre, price, quantity, summary) VALUES
-  ('978-0-13-235088-4', 'Clean Code', 'Robert Martin', 'A handbook of agile software craftsmanship.', 'non-fiction', 42.00, 10, 'Summary placeholder for Clean Code.'),
-  ('978-0-321-53410-4', 'The Pragmatic Programmer', 'Hunt and Thomas', 'Tips for pragmatic developers.', 'non-fiction', 49.99, 5, 'Summary placeholder for Pragmatic Programmer.'),
-  ('978-0-13-468599-1', 'Effective Java', 'Joshua Bloch', 'Best practices for Java.', 'non-fiction', 54.50, 8, 'Summary placeholder for Effective Java.')
+  ('9789000000001', 'Clean Code', 'Robert Martin', 'A handbook of agile software craftsmanship.', 'non-fiction', 42.00, 10, 'Summary placeholder for Clean Code.'),
+  ('9789000000002', 'The Pragmatic Programmer', 'Hunt and Thomas', 'Tips for pragmatic developers.', 'non-fiction', 49.99, 5, 'Summary placeholder for Pragmatic Programmer.'),
+  ('9789000000003', 'Effective Java', 'Joshua Bloch', 'Best practices for Java.', 'non-fiction', 54.50, 8, 'Summary placeholder for Effective Java.')
 ON DUPLICATE KEY UPDATE title=VALUES(title);
