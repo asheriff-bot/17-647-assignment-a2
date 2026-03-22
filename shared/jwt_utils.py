@@ -10,7 +10,8 @@ from flask import jsonify, request
 ALLOWED_SUBS = {"starlord", "gamora", "drax", "rocket", "groot"}
 REQUIRED_ISS = "cmu.edu"
 
-JWT_ALGORITHMS = ["HS256", "HS384", "HS512", "RS256", "RS384", "RS512"]
+# A2 tokens are HS*; explicit key="" avoids PyJWT 2.x decode quirks in some Linux images.
+JWT_DECODE_ALGORITHMS = ["HS256", "HS384", "HS512"]
 
 
 def _normalize_iss(val) -> str:
@@ -42,12 +43,11 @@ def validate_jwt(token_str):
     try:
         payload = jwt.decode(
             token_str,
-            algorithms=JWT_ALGORITHMS,
+            key="",
+            algorithms=JWT_DECODE_ALGORITHMS,
             options={"verify_signature": False},
         )
-    except jwt.InvalidTokenError:
-        return False, "Invalid token"
-    except jwt.PyJWTError:
+    except Exception:
         return False, "Invalid token"
 
     if "sub" not in payload:

@@ -4,6 +4,7 @@ Spec: 17-647 A1 (ISBN, Author, description, genre, price, quantity, summary on G
 """
 from __future__ import annotations
 
+import math
 import os
 import re
 from decimal import Decimal, InvalidOperation
@@ -42,6 +43,15 @@ def _read_json_dict():
     return data if isinstance(data, dict) else None
 
 
+def _json_price(row_price) -> float | int:
+    if row_price is None:
+        return None
+    d = Decimal(str(row_price))
+    if d == d.to_integral_value():
+        return int(d)
+    return float(d)
+
+
 def row_to_book_json(row: dict, include_summary: bool) -> dict:
     """A1 JSON keys: ISBN, title, Author, description, genre, price, quantity; summary on GET."""
     out = {
@@ -50,7 +60,7 @@ def row_to_book_json(row: dict, include_summary: bool) -> dict:
         "Author": row["author"],
         "description": row["description"],
         "genre": row["genre"],
-        "price": float(row["price"]) if row["price"] is not None else None,
+        "price": _json_price(row["price"]),
         "quantity": int(row["quantity"]),
     }
     # GET responses must always include summary (empty until async LLM fills it)
@@ -117,17 +127,29 @@ def validate_price(price: Any) -> Tuple[bool, Optional[Decimal]]:
         s = price.strip()
         if not s or not re.match(r"^-?\d+(\.\d+)?$", s):
             return False, None
+        if "." in s:
+            frac = s.split(".", 1)[1]
+            if not frac.isdigit() or len(frac) > 2:
+                return False, None
         try:
             d = Decimal(s)
         except InvalidOperation:
             return False, None
-    elif isinstance(price, (int, float)):
+    elif isinstance(price, float):
+        if math.isnan(price) or math.isinf(price):
+            return False, None
+        rs = repr(price)
+        if "." in rs and "e" not in rs.lower():
+            frac = rs.split(".", 1)[1]
+            if len(frac) > 2:
+                return False, None
         try:
-            if isinstance(price, float):
-                # Do not round — e.g. 10.999 must be 400 (invalid decimals), not accepted then 422 on duplicate ISBN.
-                d = Decimal(str(price))
-            else:
-                d = Decimal(int(price))
+            d = Decimal(str(price))
+        except (InvalidOperation, ValueError, OverflowError):
+            return False, None
+    elif isinstance(price, int) and not isinstance(price, bool):
+        try:
+            d = Decimal(int(price))
         except (InvalidOperation, ValueError, OverflowError):
             return False, None
     else:
@@ -444,7 +466,7 @@ def create_book():
             "Author": author_val,
             "description": data["description"],
             "genre": data["genre"],
-            "price": float(dprice),
+            "price": _json_price(dprice),
             "quantity": qty,
         }
     )

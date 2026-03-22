@@ -3,6 +3,8 @@ Mobile BFF — A2: JWT then X-Client-Type; genre non-fiction → 3; strip addres
 """
 import json
 import os
+from urllib.parse import unquote
+
 import requests
 from flask import Flask, Response, request
 
@@ -104,19 +106,49 @@ def _a2_should_transform_book_get() -> bool:
     return p.startswith("/books/")
 
 
+def _query_string_has_userid_param() -> bool:
+    """
+    True if ?userId= or ?user_id= is present (parse raw query; Werkzeug treats '+' as space).
+    Matches customer_service behavior for emails like user+tag@domain.com.
+    """
+    raw = request.query_string.decode("utf-8", errors="replace")
+    if not raw:
+        return False
+    for segment in raw.split("&"):
+        if not segment or "=" not in segment:
+            continue
+        key, _, _ = segment.partition("=")
+        k = unquote(key.strip(), errors="replace").strip().lower()
+        if k in ("userid", "user_id"):
+            return True
+    return False
+
+
 def _a2_should_transform_customer_get() -> bool:
     """Single-customer GET: by path or ?userId= (not GET /customers list)."""
     p = _path_norm()
-    if p == "/customers" and request.args.get("userId"):
+    if p == "/customers" and _query_string_has_userid_param():
         return True
     return p.startswith("/customers/")
 
 
+def _a2_should_transform_book_write() -> bool:
+    """Mobile E2E: genre non-fiction → 3 on POST 201 / PUT 200 book JSON bodies too."""
+    p = _path_norm()
+    if request.method == "POST" and p == "/books":
+        return True
+    if request.method == "PUT" and p.startswith("/books/"):
+        return True
+    return False
+
+
 def build_response(body, status_code, headers, apply_book=False, apply_customer=False):
-    # A2: transforms only on specific GET success responses (not list-all, not POST/PUT).
-    if body and request.method == "GET" and status_code == 200:
-        if apply_book and _a2_should_transform_book_get():
+    if body and apply_book:
+        if request.method == "GET" and status_code == 200 and _a2_should_transform_book_get():
             body = transform_book_response(body)
+        elif status_code in (200, 201) and _a2_should_transform_book_write():
+            body = transform_book_response(body)
+    if body and request.method == "GET" and status_code == 200:
         if apply_customer and _a2_should_transform_customer_get():
             body = transform_customer_response(body)
     resp = Response(body, status=status_code)

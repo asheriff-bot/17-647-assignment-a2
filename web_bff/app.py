@@ -64,6 +64,9 @@ def build_response(body, status_code, headers):
             resp.headers[k] = absolute_location_header(v)
         elif lk in ("content-type", "content-length"):
             resp.headers[k] = v
+    if body is not None:
+        blen = len(body) if isinstance(body, (bytes, bytearray)) else 0
+        resp.headers["Content-Length"] = str(blen)
     return resp
 
 
