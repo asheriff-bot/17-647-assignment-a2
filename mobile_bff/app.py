@@ -13,13 +13,14 @@ sys.path.insert(0, _app_dir)
 sys.path.insert(0, os.path.join(_app_dir, ".."))
 from shared.bff_auth import require_mobile_bff
 from shared.bff_response import absolute_location_header
+from shared.envutil import env_int
 
 app = Flask(__name__)
 app.url_map.strict_slashes = False
 _backend = (os.environ.get("URL_BASE_BACKEND_SERVICES") or "").strip()
 BACKEND_BASE = (_backend or "http://localhost:3000").rstrip("/")
 
-PROXY_TIMEOUT = int(os.environ.get("BFF_PROXY_TIMEOUT", "120"))
+PROXY_TIMEOUT = env_int("BFF_PROXY_TIMEOUT", 120)
 
 CUSTOMER_ATTRS_TO_REMOVE = {"address", "address2", "city", "state", "zipcode"}
 

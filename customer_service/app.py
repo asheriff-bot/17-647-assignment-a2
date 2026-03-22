@@ -98,11 +98,12 @@ def normalize_customer_post_body(data: dict) -> None:
         ("zipcode", ("zipCode", "Zipcode", "ZipCode", "ZIPCODE")),
     )
     for canonical, alts in aliases:
-        if canonical not in data:
-            for a in alts:
-                if a in data:
-                    data[canonical] = data[a]
-                    break
+        if canonical in data and data.get(canonical) is not None:
+            continue
+        for a in alts:
+            if a in data:
+                data[canonical] = data[a]
+                break
 
 
 def canonical_email_user_id(v: Any) -> Optional[str]:

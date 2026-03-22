@@ -2,6 +2,10 @@
 Shared JWT validation for BFF services.
 Validates: sub in (starlord, gamora, drax, rocket, groot), exp in future, iss == "cmu.edu".
 """
+from __future__ import annotations
+
+import base64
+import json
 import time
 import jwt
 from functools import wraps
@@ -10,7 +14,23 @@ from flask import jsonify, request
 ALLOWED_SUBS = {"starlord", "gamora", "drax", "rocket", "groot"}
 REQUIRED_ISS = "cmu.edu"
 
-JWT_ALGORITHMS = ["HS256", "HS384", "HS512", "RS256", "RS384", "RS512"]
+# A2 tokens are HS256; include common HMAC algs. Explicit key= avoids PyJWT API ambiguity.
+JWT_DECODE_ALGORITHMS = ["HS256", "HS384", "HS512"]
+
+
+def _decode_jwt_payload_unverified(token_str: str) -> dict | None:
+    """If PyJWT decode fails (version/alg quirks), parse payload per JWT structure."""
+    parts = token_str.split(".")
+    if len(parts) != 3:
+        return None
+    payload_b64 = parts[1]
+    pad = "=" * (-len(payload_b64) % 4)
+    try:
+        raw = base64.urlsafe_b64decode(payload_b64 + pad)
+        obj = json.loads(raw.decode("utf-8"))
+        return obj if isinstance(obj, dict) else None
+    except Exception:
+        return None
 
 
 def _normalize_iss(val) -> str:
@@ -39,15 +59,19 @@ def validate_jwt(token_str):
         token_str = token_str[7:].strip()
     if not token_str:
         return False, "Missing token"
+    payload: dict | None = None
     try:
         payload = jwt.decode(
             token_str,
-            algorithms=JWT_ALGORITHMS,
+            key="",
+            algorithms=JWT_DECODE_ALGORITHMS,
             options={"verify_signature": False},
         )
-    except jwt.InvalidTokenError:
-        return False, "Invalid token"
-    except jwt.PyJWTError:
+    except Exception:
+        payload = None
+    if not isinstance(payload, dict):
+        payload = _decode_jwt_payload_unverified(token_str)
+    if not isinstance(payload, dict):
         return False, "Invalid token"
 
     if "sub" not in payload:

@@ -23,6 +23,17 @@ def _db_host() -> str:
     return (os.environ.get("DB_HOST") or os.environ.get("DB_ENDPOINT") or "localhost").strip()
 
 
+def _env_int(name: str, default: int) -> int:
+    """Empty env (e.g. BOOK_SUMMARY_MIN_WORDS=) must not make int('') crash every POST /books."""
+    v = os.environ.get(name)
+    if v is None or not str(v).strip():
+        return default
+    try:
+        return int(str(v).strip(), 10)
+    except ValueError:
+        return default
+
+
 DB_CONFIG = {
     "host": _db_host(),
     "user": os.environ.get("DB_USER", "root"),
@@ -108,9 +119,12 @@ def normalize_book_body(data: dict) -> dict:
         ("quantity", "Quantity"),
     )
     for canonical, alt in pairs:
-        if canonical not in data and alt in data:
+        if alt not in data:
+            continue
+        # Fill missing OR null from alternate (some clients send "price": null + "Price": 59.95)
+        if canonical not in data or data.get(canonical) is None:
             data[canonical] = data[alt]
-    if data.get("ISBN") is None and data.get("isbn") is None and "Isbn" in data:
+    if (data.get("ISBN") is None and data.get("isbn") is None) and "Isbn" in data:
         data["ISBN"] = data["Isbn"]
     return data
 
@@ -346,7 +360,7 @@ def _deterministic_summary_at_least_words(
 def _finalize_book_summary(
     raw: str, title: str, author: str, description: str, genre: str
 ) -> str:
-    min_w = int(os.environ.get("BOOK_SUMMARY_MIN_WORDS", "200"))
+    min_w = max(50, min(_env_int("BOOK_SUMMARY_MIN_WORDS", 200), 2000))
     text = (raw or "").strip()
     if _summary_word_count(text) >= min_w:
         return text[:5000]
@@ -390,7 +404,7 @@ def _call_llm_or_fallback(title: str, author: str, description: str, genre: str)
             }
             # Short timeout so autograders do not fail the whole suite waiting on LLM
             r = requests.post(
-                url, json=body, headers=headers, timeout=int(os.environ.get("LLM_HTTP_TIMEOUT", "15"))
+                url, json=body, headers=headers, timeout=max(5, _env_int("LLM_HTTP_TIMEOUT", 15))
             )
             r.raise_for_status()
             data = r.json()

@@ -130,6 +130,8 @@ assign_2_aws/
 
 **Pattern:** Tests that only need the BFF (**JWT**, **headers**, **`GET /status`**) pass, but **book/customer** tests fail → the problem is almost always **after** the BFF: **Internal ALB :3000**, **security groups**, **Aurora connectivity**, or **DB schema** — not JWT code.
 
+**Sudden “everything fails” (401 / 500 on most tests):** Ensure BFF images include **`shared/jwt_utils.py`** (explicit `key=""` + payload fallback) and **do not** set empty numeric env vars like **`BOOK_SUMMARY_MIN_WORDS=`** or **`BFF_PROXY_TIMEOUT=`** on containers — those used to make **`int("")`** crash at import or on **POST /books**.
+
 **Docker env on book/customer EC2s:** Services read **`DB_HOST`** (or **`DB_ENDPOINT`** as an alias). If you only export `DB_ENDPOINT` on your laptop for `mysql` but pass **no** `DB_HOST` into `docker run`, the container defaults to **`localhost`** → every DB call fails (**500**). Run: `docker exec book-svc printenv DB_HOST` (and `DB_ENDPOINT`) — one of them must be your **RDS cluster endpoint**.
 
 **Gradescope / book summary:** If **`book-svc`** has **`LLM_API_*` / `GROQ_*` / `OPENAI_*`** set, each POST can get a **different** LLM summary, so tests that compare the **full** book JSON will fail. Use **`-e BOOK_LLM_DISABLE=1`** on **book-svc** (or remove LLM env vars) so summaries use the **deterministic** fallback. Whole-dollar **`price`** values are returned as JSON **integers** (`99` not `99.0`) to match strict equality checks. Some graders require the stored summary to be **at least ~200 words** on **GET**; the service pads short LLM output and uses a long deterministic fallback (**`BOOK_SUMMARY_MIN_WORDS`**, default **200**).
