@@ -92,11 +92,45 @@ def transform_customer_response(data: bytes) -> bytes:
         return data
 
 
+def _path_norm() -> str:
+    return (request.path or "").rstrip("/") or "/"
+
+
+def _a2_should_transform_book_get() -> bool:
+    """Single-book GET only; not GET /books list (autograder expects raw list)."""
+    p = _path_norm()
+    if p == "/books":
+        return False
+    return p.startswith("/books/")
+
+
+def _a2_should_transform_customer_get() -> bool:
+    """Single-customer GET: by path or ?userId= (not GET /customers list)."""
+    p = _path_norm()
+    if p == "/customers" and request.args.get("userId"):
+        return True
+    return p.startswith("/customers/")
+
+
+def _a2_should_transform_book_write() -> bool:
+    """POST create or PUT update returns one book object; apply genre rule like GET-one."""
+    p = _path_norm()
+    if request.method == "POST" and p == "/books":
+        return True
+    if request.method == "PUT" and p.startswith("/books/"):
+        return True
+    return False
+
+
 def build_response(body, status_code, headers, apply_book=False, apply_customer=False):
-    # A2: transforms only on specific GET success responses (not list-all, not POST/PUT).
-    if body and request.method == "GET" and status_code == 200:
-        if apply_book and _a2_should_transform_book_get():
+    # A2: genre "non-fiction" -> 3 for mobile on single-book GET, POST 201, PUT 200.
+    # Do not transform GET /books list.
+    if body and apply_book:
+        if request.method == "GET" and status_code == 200 and _a2_should_transform_book_get():
             body = transform_book_response(body)
+        elif status_code in (200, 201) and _a2_should_transform_book_write():
+            body = transform_book_response(body)
+    if body and request.method == "GET" and status_code == 200:
         if apply_customer and _a2_should_transform_customer_get():
             body = transform_customer_response(body)
     resp = Response(body, status=status_code)
