@@ -5,7 +5,6 @@ import json
 import os
 import requests
 from flask import Flask, Response, request
-from urllib.parse import unquote
 
 import sys
 
@@ -105,47 +104,19 @@ def _a2_should_transform_book_get() -> bool:
     return p.startswith("/books/")
 
 
-def _query_has_userid_param() -> bool:
-    """True if query targets one customer by userId (raw parse; + in email not treated as space)."""
-    raw = request.query_string.decode("utf-8", errors="replace")
-    if not raw:
-        return False
-    for segment in raw.split("&"):
-        if not segment or "=" not in segment:
-            continue
-        key, _, _ = segment.partition("=")
-        k = unquote(key.strip(), errors="replace").strip().lower()
-        if k in ("userid", "user_id"):
-            return True
-    return False
-
-
 def _a2_should_transform_customer_get() -> bool:
     """Single-customer GET: by path or ?userId= (not GET /customers list)."""
     p = _path_norm()
-    if p == "/customers" and _query_has_userid_param():
+    if p == "/customers" and request.args.get("userId"):
         return True
     return p.startswith("/customers/")
 
 
-def _a2_should_transform_book_write() -> bool:
-    """POST/PUT return one book JSON; integration tests expect genre non-fiction → 3 on Mobile."""
-    p = _path_norm()
-    if request.method == "POST" and p == "/books":
-        return True
-    if request.method == "PUT" and p.startswith("/books/"):
-        return True
-    return False
-
-
 def build_response(body, status_code, headers, apply_book=False, apply_customer=False):
-    # Books: GET single + POST/PUT success transform genre; not GET /books list.
-    if body and apply_book:
-        if request.method == "GET" and status_code == 200 and _a2_should_transform_book_get():
-            body = transform_book_response(body)
-        elif status_code in (200, 201) and _a2_should_transform_book_write():
-            body = transform_book_response(body)
+    # A2: transforms only on specific GET success responses (not list-all, not POST/PUT).
     if body and request.method == "GET" and status_code == 200:
+        if apply_book and _a2_should_transform_book_get():
+            body = transform_book_response(body)
         if apply_customer and _a2_should_transform_customer_get():
             body = transform_customer_response(body)
     resp = Response(body, status=status_code)
