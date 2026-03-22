@@ -62,7 +62,11 @@ def row_to_book_json(row: dict, include_summary: bool) -> dict:
 def get_isbn_from_body(data: dict) -> Optional[str]:
     if not data:
         return None
-    return data.get("ISBN") or data.get("isbn")
+    v = data.get("ISBN") if data.get("ISBN") is not None else data.get("isbn")
+    if v is None:
+        return None
+    s = str(v).strip()
+    return s if s else None
 
 
 def get_author_from_body(data: dict) -> Optional[str]:
@@ -97,6 +101,15 @@ def normalize_book_body(data: dict) -> dict:
     return data
 
 
+def _price_at_most_two_decimal_places(d: Decimal) -> bool:
+    """Reject prices with more than two digits after the decimal point (PUT/POST invalid-decimal tests)."""
+    fs = format(d, "f")
+    if "." not in fs:
+        return True
+    frac = fs.split(".", 1)[1]
+    return len(frac) <= 2
+
+
 def validate_price(price: Any) -> Tuple[bool, Optional[Decimal]]:
     if price is None or isinstance(price, bool):
         return False, None
@@ -110,9 +123,9 @@ def validate_price(price: Any) -> Tuple[bool, Optional[Decimal]]:
             return False, None
     elif isinstance(price, (int, float)):
         try:
-            # JSON numbers are IEEE floats; avoid spurious decimal places (e.g. 59.9500000003)
             if isinstance(price, float):
-                d = Decimal(str(round(price, 2)))
+                # Do not round — e.g. 10.999 must be 400 (invalid decimals), not accepted then 422 on duplicate ISBN.
+                d = Decimal(str(price))
             else:
                 d = Decimal(int(price))
         except (InvalidOperation, ValueError, OverflowError):
@@ -121,8 +134,7 @@ def validate_price(price: Any) -> Tuple[bool, Optional[Decimal]]:
         return False, None
     if d < 0:
         return False, None
-    exp = d.as_tuple().exponent
-    if exp < 0 and abs(exp) > 2:
+    if not _price_at_most_two_decimal_places(d):
         return False, None
     return True, d
 
@@ -291,6 +303,7 @@ def list_books():
 
 @app.route("/books/<isbn>", methods=["GET", "PUT"])
 def book_by_isbn(isbn):
+    isbn = str(isbn).strip()
     if request.method == "GET":
         try:
             conn = get_db()
@@ -387,6 +400,17 @@ def create_book():
 
     author_val = get_author_from_body(data)
     try:
+        conn = get_db()
+        try:
+            with conn.cursor() as cur:
+                if fetch_book_row(cur, isbn):
+                    return jsonify({"message": "This ISBN already exists in the system."}), 422
+        finally:
+            conn.close()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    try:
         summary_text = _call_llm_or_fallback(
             data["title"],
             author_val,
@@ -395,9 +419,6 @@ def create_book():
         )
         conn = get_db()
         with conn.cursor() as cur:
-            if fetch_book_row(cur, isbn):
-                conn.close()
-                return jsonify({"message": "This ISBN already exists in the system."}), 422
             cur.execute(
                 """INSERT INTO books (isbn, title, author, description, genre, price, quantity, summary)
                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",

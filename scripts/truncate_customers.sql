@@ -1,3 +1,3 @@
--- Run on Aurora writer before re-testing or resubmitting Gradescope if POST /customers keeps returning 422.
+-- Run on Aurora **writer** before Gradescope resubmit if POST /customers returns 422 (userId already exists).
 USE bookstore;
 TRUNCATE TABLE customers;

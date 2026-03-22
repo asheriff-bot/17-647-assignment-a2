@@ -66,6 +66,11 @@ def valid_email(s: str) -> bool:
     return bool(s and EMAIL_RE.match(s))
 
 
+def _canonical_user_id(s: str) -> str:
+    """Strip + lowercase so duplicate checks match A1 / shared RDS (same email, different casing)."""
+    return str(s).strip().lower()
+
+
 def get_user_id_query_param() -> Optional[str]:
     """
     Read userId from the raw query string using unquote (not form-style unquote_plus).
@@ -135,7 +140,7 @@ def list_or_query_customers():
     if user_id is None:
         user_id = request.args.get("userId")
     if user_id is not None:
-        user_id = user_id.strip()
+        user_id = _canonical_user_id(user_id)
     if user_id is None:
         try:
             conn = get_db()
@@ -200,6 +205,7 @@ def create_customer():
     normalize_customer_post_body(data)
     if not post_customer_required(data):
         return jsonify({}), 400
+    data["userId"] = _canonical_user_id(data["userId"])
     if not valid_email(data.get("userId", "")):
         return jsonify({}), 400
     st = (data.get("state") or "").strip().upper()
