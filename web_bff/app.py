@@ -11,6 +11,7 @@ _app_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _app_dir)
 sys.path.insert(0, os.path.join(_app_dir, ".."))
 from shared.bff_auth import require_web_bff
+from shared.bff_response import absolute_location_header
 
 app = Flask(__name__)
 app.url_map.strict_slashes = False
@@ -59,7 +60,9 @@ def build_response(body, status_code, headers):
     resp = Response(body, status=status_code)
     for k, v in headers.items():
         lk = k.lower()
-        if lk in ("content-type", "content-length", "location"):
+        if lk == "location":
+            resp.headers[k] = absolute_location_header(v)
+        elif lk in ("content-type", "content-length"):
             resp.headers[k] = v
     return resp
 

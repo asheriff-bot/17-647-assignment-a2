@@ -104,12 +104,22 @@ def normalize_customer_post_body(data: dict) -> None:
                     break
 
 
+def _non_empty_scalar(v: Any) -> bool:
+    if v is None:
+        return False
+    if isinstance(v, str) and not v.strip():
+        return False
+    return True
+
+
 def post_customer_required(data: dict) -> bool:
     if not data:
         return False
     mandatory = ["userId", "name", "phone", "address", "city", "state", "zipcode"]
     for k in mandatory:
         if k not in data:
+            return False
+        if not _non_empty_scalar(data.get(k)):
             return False
     return True
 

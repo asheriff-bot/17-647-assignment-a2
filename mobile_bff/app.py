@@ -12,6 +12,7 @@ _app_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _app_dir)
 sys.path.insert(0, os.path.join(_app_dir, ".."))
 from shared.bff_auth import require_mobile_bff
+from shared.bff_response import absolute_location_header
 
 app = Flask(__name__)
 app.url_map.strict_slashes = False
@@ -92,16 +93,18 @@ def transform_customer_response(data: bytes) -> bytes:
 
 
 def build_response(body, status_code, headers, apply_book=False, apply_customer=False):
-    # A2: genre → 3 and stripped customer fields apply only to **GET** responses, not POST/PUT 201/200.
+    # A2: transforms only on specific GET success responses (not list-all, not POST/PUT).
     if body and request.method == "GET" and status_code == 200:
-        if apply_book:
+        if apply_book and _a2_should_transform_book_get():
             body = transform_book_response(body)
-        if apply_customer:
+        if apply_customer and _a2_should_transform_customer_get():
             body = transform_customer_response(body)
     resp = Response(body, status=status_code)
     for k, v in headers.items():
         lk = k.lower()
-        if lk in ("content-type", "content-length", "location"):
+        if lk == "location":
+            resp.headers[k] = absolute_location_header(v)
+        elif lk in ("content-type", "content-length"):
             resp.headers[k] = v
     if body is not None:
         blen = len(body) if isinstance(body, (bytes, bytearray)) else 0

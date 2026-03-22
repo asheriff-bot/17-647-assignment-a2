@@ -137,7 +137,7 @@ assign_2_aws/
 3. On **each** EC2 running a BFF: `URL_BASE_BACKEND_SERVICES=http://<InternalALBDNSName>:3000` (**port 3000**, not 80). Wrong host/port → **502** or **400** on proxied calls.
 4. After any code change: rebuild **all four** images for **`linux/amd64`**, push, **`docker pull` + restart** on **all four** EC2 instances. Mismatched versions (old BFF, new book service) cause confusing failures.
 5. Run **`scripts/init_db.sql`** on the Aurora **writer** so schema matches the services (`books` / `customers` tables with full columns).
-6. **Mobile BFF (A2):** Response transforms (`non-fiction` → `3`, strip address fields) apply **only to GET** with status **200**, not to POST/PUT **201/200** bodies — otherwise autograders comparing A1 JSON shapes will fail.
+6. **Mobile BFF (A2):** `non-fiction` → `3` only on **GET** **`/books/{ISBN}`** and **`/books/isbn/{ISBN}`**, **not** on **GET `/books`**. Strip address fields only on **GET `/customers/{id}`** and **GET `/customers?userId=`**, **not** on **GET `/customers`**. **Location:** BFFs rewrite relative `Location` to **`http(s)://<Host>...`** via `Host` + `X-Forwarded-Proto` for autograders.
 7. **Trailing slashes:** Services use `strict_slashes = False` so `POST /books/` does not 308-redirect and drop the JSON body (some graders use trailing slashes).
 8. On an EC2 running a **BFF**, check the proxy target:  
    `docker exec web-bff printenv URL_BASE_BACKEND_SERVICES` → must be `http://<Internal-ALB-DNS>:3000`.  

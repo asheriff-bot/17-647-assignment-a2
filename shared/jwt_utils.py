@@ -21,7 +21,10 @@ def _normalize_iss(val) -> str:
     for prefix in ("https://", "http://"):
         if s.startswith(prefix):
             s = s[len(prefix) :]
-    return s.rstrip("/")
+    s = s.rstrip("/")
+    if s.startswith("www."):
+        s = s[4:]
+    return s
 
 
 def validate_jwt(token_str):

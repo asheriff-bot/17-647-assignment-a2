@@ -150,17 +150,29 @@ def validate_quantity(q: Any) -> Tuple[bool, Optional[int]]:
     return False, None
 
 
+def _non_empty_scalar(v: Any) -> bool:
+    """Reject null, empty string, or whitespace-only strings for required A1 text fields."""
+    if v is None:
+        return False
+    if isinstance(v, str) and not v.strip():
+        return False
+    return True
+
+
 def post_book_required_keys(data: dict) -> bool:
     if not data:
         return False
     isbn = get_isbn_from_body(data)
-    if not isbn:
+    if not isbn or not str(isbn).strip():
         return False
     if not get_author_from_body(data):
         return False
     need = ["title", "description", "genre", "price", "quantity"]
     for k in need:
         if k not in data:
+            return False
+    for k in ("title", "description", "genre"):
+        if not _non_empty_scalar(data.get(k)):
             return False
     return True
 
