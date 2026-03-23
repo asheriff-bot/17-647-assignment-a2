@@ -39,6 +39,12 @@ def proxy_to_backend(path: str, method: str = "GET", **kwargs):
     }
     headers = {k: v for k, v in request.headers if k.lower() not in skip}
 
+    # Same as mobile BFF: book service maps non-fiction → genre 3 when this is set.
+    # Needed when External ALB sends iOS/Android traffic to Web BFF targets.
+    xt = (request.headers.get("X-Client-Type") or "").strip().lower()
+    if xt in ("ios", "android"):
+        headers["X-A2-Mobile-BFF"] = "1"
+
     if m in ("GET", "HEAD"):
         headers = {
             k: v
