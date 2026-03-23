@@ -40,6 +40,8 @@ def proxy_to_backend(path: str, method: str = "GET", **kwargs):
         "transfer-encoding",
     }
     headers = {k: v for k, v in request.headers if k.lower() not in skip}
+    # Book service maps non-fiction -> 3 when this is set (survives even if BFF JSON rewrite fails).
+    headers["X-A2-Mobile-BFF"] = "1"
 
     if m in ("GET", "HEAD"):
         headers = {
@@ -107,14 +109,6 @@ def _path_norm() -> str:
     return (request.path or "").rstrip("/") or "/"
 
 
-def _a2_should_transform_book_get() -> bool:
-    """Single-book GET only; not GET /books list (autograder expects raw list)."""
-    p = _path_norm()
-    if p == "/books":
-        return False
-    return p.startswith("/books/")
-
-
 def _query_string_has_userid_param() -> bool:
     """
     True if ?userId= or ?user_id= is present (parse raw query; Werkzeug treats '+' as space).
@@ -141,14 +135,16 @@ def _a2_should_transform_customer_get() -> bool:
     return p.startswith("/customers/")
 
 
+def _a2_skip_book_genre_transform() -> bool:
+    """GET /books list must not rewrite genre (assignment + book service from_book_list)."""
+    p = _path_norm()
+    return request.method == "GET" and p == "/books"
+
+
 def build_response(body, status_code, headers, apply_book=False, apply_customer=False):
-    # A2: non-fiction → 3 on single-book GETs; POST/PUT book responses must also use genre 3.
-    # Only /books routes set apply_book=True — no path heuristics needed for POST/PUT.
-    if body and apply_book:
-        if request.method == "GET" and status_code == 200 and _a2_should_transform_book_get():
-            body = transform_book_response(body)
-        elif status_code in (200, 201) and request.method in ("POST", "PUT"):
-            body = transform_book_response(body)
+    # Redundant with book service X-A2-Mobile-BFF mapping; keeps responses correct if header stripped.
+    if body and apply_book and not _a2_skip_book_genre_transform():
+        body = transform_book_response(body)
     if body and request.method == "GET" and status_code == 200:
         if apply_customer and _a2_should_transform_customer_get():
             body = transform_customer_response(body)

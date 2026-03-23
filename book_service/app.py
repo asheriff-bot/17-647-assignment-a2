@@ -53,6 +53,21 @@ def _json_price(row_price) -> float | int:
     return float(d)
 
 
+def _genre_for_json_response(genre_value: Any, *, from_book_list: bool = False) -> Any:
+    """
+    Mobile BFF sets X-A2-Mobile-BFF: 1 on proxied requests. Map non-fiction -> 3 for JSON output.
+    GET /books list must keep raw genre (assignment: transform only on single-book paths from BFF).
+    """
+    if from_book_list:
+        return genre_value
+    if request.headers.get("X-A2-Mobile-BFF", "").strip() != "1":
+        return genre_value
+    gs = str(genre_value).strip().lower() if genre_value is not None else ""
+    if gs in ("non-fiction", "nonfiction"):
+        return 3
+    return genre_value
+
+
 def format_isbn_for_json(isbn_stored: str) -> str:
     """
     Gradescope often expects hyphenated ISBNs (e.g. 222-1114567890). If the DB row was
@@ -70,14 +85,14 @@ def format_isbn_for_json(isbn_stored: str) -> str:
     return s
 
 
-def row_to_book_json(row: dict, include_summary: bool) -> dict:
+def row_to_book_json(row: dict, include_summary: bool, from_book_list: bool = False) -> dict:
     """A1 JSON keys: ISBN, title, Author, description, genre, price, quantity; summary on GET."""
     out = {
         "ISBN": format_isbn_for_json(row["isbn"]),
         "title": row["title"],
         "Author": row["author"],
         "description": row["description"],
-        "genre": row["genre"],
+        "genre": _genre_for_json_response(row["genre"], from_book_list=from_book_list),
         "price": _json_price(row["price"]),
         "quantity": int(row["quantity"]),
     }
@@ -394,7 +409,7 @@ def list_books():
             )
             rows = cur.fetchall()
         conn.close()
-        return jsonify([row_to_book_json(r, True) for r in rows]), 200
+        return jsonify([row_to_book_json(r, True, from_book_list=True) for r in rows]), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -553,7 +568,7 @@ def create_book():
             "title": data["title"],
             "Author": author_val,
             "description": data["description"],
-            "genre": data["genre"],
+            "genre": _genre_for_json_response(data["genre"], from_book_list=False),
             "price": _json_price(dprice),
             "quantity": qty,
         }
