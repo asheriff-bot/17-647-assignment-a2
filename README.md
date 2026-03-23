@@ -32,7 +32,7 @@ Create test tokens at [jwt.io](https://jwt.io) with HS256 and payload like:
 ## Autograder / LLM summary
 
 - Book **summaries** must be **deterministic** for E2E tests that compare JSON. The book service **does not** call an external LLM unless you set **`ENABLE_LLM_SUMMARY=1`** (and `LLM_API_URL` + API key). Otherwise a fixed fallback summary is used.
-- **Mobile BFF** must be redeployed after code changes so **`genre`: `non-fiction` → `3`** applies on **single-book GETs** (not the list).
+- **Mobile BFF** must be redeployed after code changes so **`genre`: `non-fiction` → `3`** applies on **single-book GETs**, **POST /books**, and **PUT /books/...** (not on **GET /books** list).
 - **If the “LLM Summary” test fails with `422 != 201`:** that is **not** an LLM bug — **`422` means duplicate ISBN** (`POST /books` rejected because that ISBN is already in `books`). Run **`scripts/truncate_for_gradescope.sql`** on the Aurora **writer** (or at least **`truncate_books.sql`**), then resubmit. Do **not** run **`seed_sample_books.sql`** on the DB you use for Gradescope.
 
 ## Prerequisites
@@ -147,7 +147,7 @@ assign_2_aws/
 4. After any code change: rebuild **all four** images for **`linux/amd64`**, push, **`docker pull` + restart** on **all four** EC2 instances. Mismatched versions (old BFF, new book service) cause confusing failures.
 5. Run **`scripts/init_db.sql`** on the Aurora **writer** so schema matches the services (`books` / `customers` tables with full columns). **`init_db.sql` leaves `books` empty** so Gradescope `POST /books` does not hit **422** (duplicate ISBN) from seed rows. For local sample data only, run **`scripts/seed_sample_books.sql`**.  
    **If `POST /customers` returns `422`** (“This user ID already exists”), the **`userId` email is already in RDS** (from an earlier run or manual test). Run **`scripts/truncate_customers.sql`** or clear both tables with **`scripts/truncate_for_gradescope.sql`** on the writer, then resubmit. Same idea as books: **`422` on POST means duplicate key in the DB**, not a JWT/BFF bug.
-6. **Mobile BFF (A2):** `non-fiction` → `3` only on **GET** **`/books/{ISBN}`** and **`/books/isbn/{ISBN}`**, **not** on **GET `/books`**. Strip address fields only on **GET `/customers/{id}`** and **GET `/customers?userId=`**, **not** on **GET `/customers`**. **Location:** BFFs rewrite relative `Location` to **`http(s)://<Host>...`** via `Host` + `X-Forwarded-Proto` for autograders.
+6. **Mobile BFF (A2):** `non-fiction` → `3` on **GET** single-book paths **`/books/{ISBN}`** / **`/books/isbn/{ISBN}`**, and on **POST `/books`** / **PUT** book responses — **not** on **GET `/books`** (list). Strip address fields only on **GET `/customers/{id}`** and **GET `/customers?userId=`**, **not** on **GET `/customers`**. **Location:** BFFs rewrite relative `Location` to **`http(s)://<Host>...`** via `Host` + `X-Forwarded-Proto` for autograders.
 7. **Trailing slashes:** Services use `strict_slashes = False` so `POST /books/` does not 308-redirect and drop the JSON body (some graders use trailing slashes).
 8. On an EC2 running a **BFF**, check the proxy target:  
    `docker exec web-bff printenv URL_BASE_BACKEND_SERVICES` → must be `http://<Internal-ALB-DNS>:3000`.  
