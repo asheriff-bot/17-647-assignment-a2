@@ -11,6 +11,10 @@ _app_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _app_dir)
 sys.path.insert(0, os.path.join(_app_dir, ".."))
 from shared.bff_auth import require_web_bff
+from shared.bff_book_transform import (
+    should_skip_book_genre_transform,
+    transform_book_response,
+)
 from shared.bff_response import absolute_location_header
 
 app = Flask(__name__)
@@ -62,7 +66,16 @@ def proxy_to_backend(path: str, method: str = "GET", **kwargs):
         return b"Bad Gateway", 502, {}
 
 
-def build_response(body, status_code, headers):
+def _path_norm() -> str:
+    return (request.path or "").rstrip("/") or "/"
+
+
+def build_response(body, status_code, headers, apply_book=False):
+    # When External ALB sends iOS/Android to Web BFF, rewrite genre like mobile_bff (header may be stripped upstream).
+    if body and apply_book and not should_skip_book_genre_transform(
+        request.method, _path_norm()
+    ):
+        body = transform_book_response(body)
     resp = Response(body, status=status_code)
     for k, v in headers.items():
         lk = k.lower()
@@ -95,18 +108,27 @@ def customer_by_id(subpath):
     return build_response(body, status_code, headers)
 
 
+def _apply_book_genre_for_mobile_client() -> bool:
+    xt = (request.headers.get("X-Client-Type") or "").strip().lower()
+    return xt in ("ios", "android")
+
+
 @app.route("/books", methods=["GET", "POST"])
 @require_web_bff
 def books():
     body, status_code, headers = proxy_to_backend("/books", method=request.method)
-    return build_response(body, status_code, headers)
+    return build_response(
+        body, status_code, headers, apply_book=_apply_book_genre_for_mobile_client()
+    )
 
 
 @app.route("/books/<path:subpath>", methods=["GET", "PUT"])
 @require_web_bff
 def book_subpath(subpath):
     body, status_code, headers = proxy_to_backend(f"/books/{subpath}", method=request.method)
-    return build_response(body, status_code, headers)
+    return build_response(
+        body, status_code, headers, apply_book=_apply_book_genre_for_mobile_client()
+    )
 
 
 if __name__ == "__main__":

@@ -14,6 +14,10 @@ _app_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _app_dir)
 sys.path.insert(0, os.path.join(_app_dir, ".."))
 from shared.bff_auth import require_mobile_bff
+from shared.bff_book_transform import (
+    should_skip_book_genre_transform,
+    transform_book_response,
+)
 from shared.bff_response import absolute_location_header
 
 app = Flask(__name__)
@@ -57,36 +61,6 @@ def proxy_to_backend(path: str, method: str = "GET", **kwargs):
         return r.content, r.status_code, dict(r.headers)
     except requests.RequestException:
         return b"Bad Gateway", 502, {}
-
-
-def _transform_book_obj(obj: dict) -> None:
-    if not isinstance(obj, dict):
-        return
-    # Backend uses "genre"; some payloads may use "Genre"
-    g = obj.get("genre")
-    if g is None and "Genre" in obj:
-        g = obj.get("Genre")
-    gs = str(g).strip().lower() if g is not None else ""
-    if gs in ("non-fiction", "nonfiction"):
-        obj["genre"] = 3
-        obj.pop("Genre", None)
-
-
-def transform_book_response(data: bytes) -> bytes:
-    try:
-        text = data.decode("utf-8")
-        parsed = json.loads(text)
-        if isinstance(parsed, list):
-            for item in parsed:
-                if isinstance(item, dict):
-                    _transform_book_obj(item)
-        elif isinstance(parsed, dict):
-            _transform_book_obj(parsed)
-        # Preserve key order from backend (match Web BFF / autograder expectations).
-        out = json.dumps(parsed, separators=(",", ":"))
-        return out.encode("utf-8")
-    except Exception:
-        return data
 
 
 def transform_customer_response(data: bytes) -> bytes:
@@ -135,15 +109,11 @@ def _a2_should_transform_customer_get() -> bool:
     return p.startswith("/customers/")
 
 
-def _a2_skip_book_genre_transform() -> bool:
-    """GET /books list must not rewrite genre (assignment + book service from_book_list)."""
-    p = _path_norm()
-    return request.method == "GET" and p == "/books"
-
-
 def build_response(body, status_code, headers, apply_book=False, apply_customer=False):
     # Redundant with book service X-A2-Mobile-BFF mapping; keeps responses correct if header stripped.
-    if body and apply_book and not _a2_skip_book_genre_transform():
+    if body and apply_book and not should_skip_book_genre_transform(
+        request.method, _path_norm()
+    ):
         body = transform_book_response(body)
     if body and request.method == "GET" and status_code == 200:
         if apply_customer and _a2_should_transform_customer_get():
