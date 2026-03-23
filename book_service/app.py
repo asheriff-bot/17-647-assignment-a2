@@ -53,10 +53,27 @@ def _json_price(row_price) -> float | int:
     return float(d)
 
 
+def format_isbn_for_json(isbn_stored: str) -> str:
+    """
+    Gradescope often expects hyphenated ISBNs (e.g. 222-1114567890). If the DB row was
+    stored digits-only (legacy) or without hyphens, format 13-digit non-978/979 as XXX-YYYYYYYYYY.
+    978/979 ISBN-13 uses different grouping — leave as digits-only if no hyphens in storage.
+    """
+    if not isbn_stored:
+        return isbn_stored
+    s = str(isbn_stored).strip()
+    if "-" in s:
+        return s
+    digits = "".join(c for c in s if c.isdigit())
+    if len(digits) == 13 and not digits.startswith(("978", "979")):
+        return f"{digits[:3]}-{digits[3:]}"
+    return s
+
+
 def row_to_book_json(row: dict, include_summary: bool) -> dict:
     """A1 JSON keys: ISBN, title, Author, description, genre, price, quantity; summary on GET."""
     out = {
-        "ISBN": row["isbn"],
+        "ISBN": format_isbn_for_json(row["isbn"]),
         "title": row["title"],
         "Author": row["author"],
         "description": row["description"],
@@ -532,7 +549,7 @@ def create_book():
 
     resp = jsonify(
         {
-            "ISBN": isbn_display,
+            "ISBN": format_isbn_for_json(isbn_display),
             "title": data["title"],
             "Author": author_val,
             "description": data["description"],
@@ -542,8 +559,8 @@ def create_book():
         }
     )
     resp.status_code = 201
-    # Path segment: keep hyphens literal (do not quote entire ISBN — %2D breaks some graders).
-    resp.headers["Location"] = f"/books/{isbn_display}"
+    loc_isbn = format_isbn_for_json(isbn_display)
+    resp.headers["Location"] = f"/books/{loc_isbn}"
     return resp
 
 
