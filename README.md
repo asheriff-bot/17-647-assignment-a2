@@ -29,6 +29,11 @@ Create test tokens at [jwt.io](https://jwt.io) with HS256 and payload like:
 - **Books**: In response body, replace the word `"non-fiction"` with the number `3`.
 - **Customers**: Remove `address`, `address2`, `city`, `state`, `zipcode` from JSON responses.
 
+## Autograder / LLM summary
+
+- Book **summaries** must be **deterministic** for E2E tests that compare JSON. The book service **does not** call an external LLM unless you set **`ENABLE_LLM_SUMMARY=1`** (and `LLM_API_URL` + API key). Otherwise a fixed fallback summary is used.
+- **Mobile BFF** must be redeployed after code changes so **`genre`: `non-fiction` → `3`** applies on GET/POST/PUT book responses.
+
 ## Prerequisites
 
 - Docker

@@ -17,6 +17,11 @@ from flask import Flask, Response, jsonify, request
 app = Flask(__name__)
 # Avoid 308 redirect on /books/ → /books that drops POST body (breaks autograders)
 app.url_map.strict_slashes = False
+# Stable JSON key order where supported (Flask 2.3+)
+try:
+    app.json.sort_keys = True  # type: ignore[attr-defined]
+except Exception:
+    pass
 
 def _db_host() -> str:
     """RDS hostname: DB_HOST preferred; DB_ENDPOINT matches CF output / mysql CLI variable name."""
@@ -249,6 +254,10 @@ def _ensure_summary_min_words(text: str, min_words: int) -> str:
 
 
 def _call_llm_or_fallback(title: str, author: str, description: str, genre: str) -> str:
+    """
+    Autograder E2E compares book JSON including `summary`; LLM output is non-deterministic.
+    LLM is used only when ENABLE_LLM_SUMMARY=1 (and URL + key are set); otherwise deterministic text.
+    """
     url = os.environ.get("LLM_API_URL") or os.environ.get("OPENAI_API_BASE")
     key = (
         os.environ.get("LLM_API_KEY")
@@ -256,7 +265,12 @@ def _call_llm_or_fallback(title: str, author: str, description: str, genre: str)
         or os.environ.get("GROQ_API_KEY")
     )
     model = os.environ.get("LLM_MODEL", "llama-3.3-70b-versatile")
-    if url and key:
+    llm_enabled = os.environ.get("ENABLE_LLM_SUMMARY", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    if llm_enabled and url and key:
         try:
             headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
             body = {

@@ -485,6 +485,21 @@ Resources:
   # Complements the listener definition by specifying a condition and an action.
   # Reference: https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-elasticloadbalancingv2-listenerrule.html
 
+  # Gradescope / health: GET /status without X-Client-Type must reach Web BFF (200 OK).
+  # Without this rule, the External listener default returns 400 before the BFF runs.
+  ExternalStatusPathListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - /status
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref WebBFFTargetGroup
+      ListenerArn: !Ref ExternalHTTPListener
+      Priority: 1
+
   # ListenerRule that defines the routing condition for Web app clients.
   WebClientListenerRule:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
@@ -499,7 +514,7 @@ Resources:
         - Type: forward
           TargetGroupArn: !Ref WebBFFTargetGroup
       ListenerArn: !Ref ExternalHTTPListener
-      Priority: 1
+      Priority: 2
 
   # ListenerRule that defines the routing condition for Mobile app clients (iOS).
   MobileIOSClientListenerRule:
@@ -515,7 +530,7 @@ Resources:
         - Type: forward
           TargetGroupArn: !Ref MobileBFFTargetGroup
       ListenerArn: !Ref ExternalHTTPListener
-      Priority: 2
+      Priority: 3
 
   # ListenerRule that defines the routing condition for Mobile app clients (Android).
   MobileAndroidClientListenerRule:
@@ -531,7 +546,7 @@ Resources:
         - Type: forward
           TargetGroupArn: !Ref MobileBFFTargetGroup
       ListenerArn: !Ref ExternalHTTPListener
-      Priority: 3
+      Priority: 4
 
   # ListenerRule that defines the routing condition for calling the CUSTOMER Service.
   # Change the path-pattern value as necessary (ex.: /api/customers/*)

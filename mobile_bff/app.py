@@ -72,7 +72,7 @@ def transform_book_response(data: bytes) -> bytes:
                     _transform_book_obj(item)
         elif isinstance(parsed, dict):
             _transform_book_obj(parsed)
-        out = json.dumps(parsed, separators=(",", ":"))
+        out = json.dumps(parsed, separators=(",", ":"), sort_keys=True)
         return out.encode("utf-8")
     except Exception:
         return data
