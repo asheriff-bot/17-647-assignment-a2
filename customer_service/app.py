@@ -9,6 +9,7 @@ from typing import Any, Optional
 from urllib.parse import unquote
 
 import pymysql
+import pymysql.err
 from flask import Flask, Response, jsonify, request
 
 app = Flask(__name__)
@@ -136,9 +137,8 @@ def status():
 
 @app.route("/customers", methods=["GET"])
 def list_or_query_customers():
+    # Do not fall back to request.args.get("userId") — Werkzeug treats '+' as space and breaks emails like a+b@x.com.
     user_id = get_user_id_query_param()
-    if user_id is None:
-        user_id = request.args.get("userId")
     if user_id is not None:
         user_id = _canonical_user_id(user_id)
     if user_id is None:
@@ -255,6 +255,11 @@ def create_customer():
         resp.status_code = 201
         resp.headers["Location"] = f"/customers/{cid}"
         return resp
+    except pymysql.err.IntegrityError as e:
+        # 1062: duplicate entry (e.g. race on userId unique key)
+        if getattr(e, "args", (None,))[0] == 1062:
+            return jsonify({"message": "This user ID already exists in the system."}), 422
+        return jsonify({"error": str(e)}), 500
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

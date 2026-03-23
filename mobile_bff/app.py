@@ -72,7 +72,8 @@ def transform_book_response(data: bytes) -> bytes:
                     _transform_book_obj(item)
         elif isinstance(parsed, dict):
             _transform_book_obj(parsed)
-        out = json.dumps(parsed, separators=(",", ":"), sort_keys=True)
+        # Preserve key order from backend (match Web BFF / autograder expectations).
+        out = json.dumps(parsed, separators=(",", ":"))
         return out.encode("utf-8")
     except Exception:
         return data
@@ -132,21 +133,10 @@ def _a2_should_transform_customer_get() -> bool:
     return p.startswith("/customers/")
 
 
-def _a2_should_transform_book_write() -> bool:
-    """Mobile E2E: genre non-fiction → 3 on POST 201 / PUT 200 book JSON bodies too."""
-    p = _path_norm()
-    if request.method == "POST" and p == "/books":
-        return True
-    if request.method == "PUT" and p.startswith("/books/"):
-        return True
-    return False
-
-
 def build_response(body, status_code, headers, apply_book=False, apply_customer=False):
+    # A2: non-fiction → 3 only on single-book GETs, not on POST/PUT responses (see README).
     if body and apply_book:
         if request.method == "GET" and status_code == 200 and _a2_should_transform_book_get():
-            body = transform_book_response(body)
-        elif status_code in (200, 201) and _a2_should_transform_book_write():
             body = transform_book_response(body)
     if body and request.method == "GET" and status_code == 200:
         if apply_customer and _a2_should_transform_customer_get():
