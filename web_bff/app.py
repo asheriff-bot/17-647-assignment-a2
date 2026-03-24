@@ -59,6 +59,9 @@ def proxy_to_backend(path: str, method: str = "GET", **kwargs):
         # POST/PUT/PATCH/DELETE: always pass body bytes; requests sets Content-Length
         kwargs["data"] = request.get_data()
 
+    # Avoid compressed bodies from backends/ALB — BFF must json-parse responses for mobile genre rewrite.
+    headers["Accept-Encoding"] = "identity"
+
     try:
         r = requests.request(m, url, timeout=PROXY_TIMEOUT, headers=headers, **kwargs)
         return r.content, r.status_code, dict(r.headers)

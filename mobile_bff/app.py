@@ -56,6 +56,9 @@ def proxy_to_backend(path: str, method: str = "GET", **kwargs):
     else:
         kwargs["data"] = request.get_data()
 
+    # Avoid compressed bodies — mobile BFF must json-parse responses for genre non-fiction → 3.
+    headers["Accept-Encoding"] = "identity"
+
     try:
         r = requests.request(m, url, timeout=PROXY_TIMEOUT, headers=headers, **kwargs)
         return r.content, r.status_code, dict(r.headers)
