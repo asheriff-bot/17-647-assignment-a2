@@ -16,7 +16,6 @@ sys.path.insert(0, os.path.join(_app_dir, ".."))
 from shared.bff_auth import require_mobile_bff
 from shared.bff_book_transform import (
     apply_book_genre_after_request,
-    should_skip_book_genre_transform,
     transform_book_response,
 )
 from shared.bff_response import absolute_location_header
@@ -115,9 +114,7 @@ def _a2_should_transform_customer_get() -> bool:
 
 def build_response(body, status_code, headers, apply_book=False, apply_customer=False):
     # Redundant with book service X-A2-Mobile-BFF mapping; keeps responses correct if header stripped.
-    if body and apply_book and not should_skip_book_genre_transform(
-        request.method, _path_norm()
-    ):
+    if body and apply_book:
         body = transform_book_response(body)
     if body and request.method == "GET" and status_code == 200:
         if apply_customer and _a2_should_transform_customer_get():

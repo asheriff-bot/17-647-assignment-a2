@@ -13,7 +13,6 @@ sys.path.insert(0, os.path.join(_app_dir, ".."))
 from shared.bff_auth import require_web_bff
 from shared.bff_book_transform import (
     apply_book_genre_after_request,
-    should_skip_book_genre_transform,
     transform_book_response,
     transform_web_client_book_response,
 )
@@ -71,15 +70,9 @@ def proxy_to_backend(path: str, method: str = "GET", **kwargs):
         return b"Bad Gateway", 502, {}
 
 
-def _path_norm() -> str:
-    return (request.path or "").rstrip("/") or "/"
-
-
 def build_response(body, status_code, headers, apply_book=False):
     # Book service emits genre int 3 for non-fiction on single-book JSON; Web BFF maps 3 -> 'non-fiction' for Web.
-    if body and apply_book and not should_skip_book_genre_transform(
-        request.method, _path_norm()
-    ):
+    if body and apply_book:
         xt = (request.headers.get("X-Client-Type") or "").strip().lower()
         if xt == "web":
             body = transform_web_client_book_response(body)

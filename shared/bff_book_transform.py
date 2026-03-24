@@ -24,15 +24,6 @@ def genre_value_is_nonfiction(g: Any) -> bool:
     return s == "nonfiction"
 
 
-def normalize_bff_path(path: str) -> str:
-    return (path or "").rstrip("/") or "/"
-
-
-def should_skip_book_genre_transform(method: str, path: str) -> bool:
-    """GET /books list must not rewrite genre (assignment + book service from_book_list)."""
-    return (method or "").upper() == "GET" and normalize_bff_path(path) == "/books"
-
-
 def _regex_fallback_genre_string_to_int_3(json_text: str) -> str:
     """
     Last resort for mobile JSON: replace quoted non-fiction genre with JSON number 3.
@@ -87,6 +78,8 @@ def transform_web_client_book_response(data: bytes) -> bytes:
                 return
             g = obj.get("genre")
             if isinstance(g, int) and g == 3:
+                obj["genre"] = "non-fiction"
+            elif genre_value_is_nonfiction(g):
                 obj["genre"] = "non-fiction"
 
         if isinstance(parsed, list):
@@ -152,10 +145,6 @@ def apply_book_genre_after_request(resp: Any, *, web_bff: bool = False) -> Any:
             return resp
     path = request.path or ""
     if not path.startswith("/books"):
-        return resp
-    m = (request.method or "GET").upper()
-    p = path.rstrip("/") or "/"
-    if should_skip_book_genre_transform(m, p):
         return resp
 
     xt = (request.headers.get("X-Client-Type") or "").strip().lower()
