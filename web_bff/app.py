@@ -12,6 +12,7 @@ sys.path.insert(0, _app_dir)
 sys.path.insert(0, os.path.join(_app_dir, ".."))
 from shared.bff_auth import require_web_bff
 from shared.bff_book_transform import (
+    apply_book_genre_after_request,
     should_skip_book_genre_transform,
     transform_book_response,
 )
@@ -132,6 +133,11 @@ def book_subpath(subpath):
     return build_response(
         body, status_code, headers, apply_book=_apply_book_genre_for_mobile_client()
     )
+
+
+@app.after_request
+def _after_book_genre_web(resp):
+    return apply_book_genre_after_request(resp, web_bff=True)
 
 
 if __name__ == "__main__":

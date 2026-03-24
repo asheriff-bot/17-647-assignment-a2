@@ -54,3 +54,37 @@ def transform_book_response(data: bytes) -> bytes:
     except Exception as e:
         print("bff_book_transform: transform_book_response failed:", repr(e), file=sys.stderr)
         return data
+
+
+def apply_book_genre_after_request(resp: Any, *, web_bff: bool = False) -> Any:
+    """
+    Flask @app.after_request: second pass so non-fiction -> 3 always applies to /books JSON
+    (covers edge cases where Response wasn't transformed in build_response).
+
+    web_bff=True: only rewrite when X-Client-Type is iOS/Android (Web BFF).
+    web_bff=False: Mobile BFF — rewrite for every proxied /books response.
+    """
+    from flask import request
+
+    if web_bff:
+        xt = (request.headers.get("X-Client-Type") or "").strip().lower()
+        if xt not in ("ios", "android"):
+            return resp
+    if resp.status_code not in (200, 201):
+        return resp
+    ct = (resp.headers.get("Content-Type") or "").lower()
+    if "application/json" not in ct:
+        return resp
+    path = request.path or ""
+    if not path.startswith("/books"):
+        return resp
+    m = (request.method or "GET").upper()
+    p = path.rstrip("/") or "/"
+    if should_skip_book_genre_transform(m, p):
+        return resp
+    data = resp.get_data()
+    new_body = transform_book_response(data)
+    if new_body != data:
+        resp.set_data(new_body)
+        resp.headers["Content-Length"] = str(len(new_body))
+    return resp
