@@ -5,8 +5,23 @@ Used by mobile_bff (always) and web_bff when X-Client-Type is ios/android (Exter
 mobile traffic to Web targets; book service may not see X-A2-Mobile-BFF if stripped by ALB).
 """
 import json
+import re
 import sys
 from typing import Any
+
+_GENRE_NONFICTION_RE = re.compile(r"[\s\-_\u2010-\u2015\u00AD]+")
+
+
+def genre_value_is_nonfiction(g: Any) -> bool:
+    """True if genre is non-fiction in any common spelling / Unicode hyphen variant."""
+    if g is None:
+        return False
+    if isinstance(g, bytes):
+        s = g.decode("utf-8", errors="replace")
+    else:
+        s = str(g).strip()
+    s = _GENRE_NONFICTION_RE.sub("", s.lower())
+    return s == "nonfiction"
 
 
 def normalize_bff_path(path: str) -> str:
@@ -24,8 +39,7 @@ def _transform_book_obj(obj: dict) -> None:
     g = obj.get("genre")
     if g is None and "Genre" in obj:
         g = obj.get("Genre")
-    gs = str(g).strip().lower() if g is not None else ""
-    if gs in ("non-fiction", "nonfiction"):
+    if genre_value_is_nonfiction(g):
         obj["genre"] = 3
         obj.pop("Genre", None)
 
@@ -100,8 +114,11 @@ def apply_book_genre_after_request(resp: Any, *, web_bff: bool = False) -> Any:
     if resp.status_code not in (200, 201):
         return resp
     ct = (resp.headers.get("Content-Type") or "").lower()
-    if "application/json" not in ct:
-        return resp
+    data = resp.get_data()
+    if "application/json" not in ct and "text/json" not in ct:
+        # Some proxies set Content-Type without json; still rewrite if body looks like JSON
+        if not (data and data.lstrip().startswith((b"{", b"["))):
+            return resp
     path = request.path or ""
     if not path.startswith("/books"):
         return resp
@@ -111,7 +128,6 @@ def apply_book_genre_after_request(resp: Any, *, web_bff: bool = False) -> Any:
         return resp
 
     xt = (request.headers.get("X-Client-Type") or "").strip().lower()
-    data = resp.get_data()
 
     if web_bff:
         if xt == "web":
