@@ -56,12 +56,12 @@ def _json_price(row_price) -> float | int:
 
 def _genre_for_json_response(genre_value: Any, *, from_book_list: bool = False) -> Any:
     """
-    Mobile BFF sets X-A2-Mobile-BFF: 1 on proxied requests. Map non-fiction -> 3 for JSON output.
-    GET /books list must keep raw genre (assignment: transform only on single-book paths from BFF).
+    Single-book JSON (POST/PUT/GET one book): emit genre as int 3 for non-fiction so mobile clients
+    always see 3 even if X-A2-Mobile-BFF is stripped by a proxy/ALB. Web BFF maps 3 -> 'non-fiction'.
+
+    GET /books list keeps the stored string (e.g. 'non-fiction') so list responses match A2 list rules.
     """
     if from_book_list:
-        return genre_value
-    if request.headers.get("X-A2-Mobile-BFF", "").strip() != "1":
         return genre_value
     gs = str(genre_value).strip().lower() if genre_value is not None else ""
     if gs in ("non-fiction", "nonfiction"):

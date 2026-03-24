@@ -15,6 +15,7 @@ from shared.bff_book_transform import (
     apply_book_genre_after_request,
     should_skip_book_genre_transform,
     transform_book_response,
+    transform_web_client_book_response,
 )
 from shared.bff_response import absolute_location_header
 
@@ -75,11 +76,15 @@ def _path_norm() -> str:
 
 
 def build_response(body, status_code, headers, apply_book=False):
-    # When External ALB sends iOS/Android to Web BFF, rewrite genre like mobile_bff (header may be stripped upstream).
+    # Book service emits genre int 3 for non-fiction on single-book JSON; Web BFF maps 3 -> 'non-fiction' for Web.
     if body and apply_book and not should_skip_book_genre_transform(
         request.method, _path_norm()
     ):
-        body = transform_book_response(body)
+        xt = (request.headers.get("X-Client-Type") or "").strip().lower()
+        if xt == "web":
+            body = transform_web_client_book_response(body)
+        elif xt in ("ios", "android"):
+            body = transform_book_response(body)
     resp = Response(body, status=status_code)
     for k, v in headers.items():
         lk = k.lower()
@@ -112,27 +117,18 @@ def customer_by_id(subpath):
     return build_response(body, status_code, headers)
 
 
-def _apply_book_genre_for_mobile_client() -> bool:
-    xt = (request.headers.get("X-Client-Type") or "").strip().lower()
-    return xt in ("ios", "android")
-
-
 @app.route("/books", methods=["GET", "POST"])
 @require_web_bff
 def books():
     body, status_code, headers = proxy_to_backend("/books", method=request.method)
-    return build_response(
-        body, status_code, headers, apply_book=_apply_book_genre_for_mobile_client()
-    )
+    return build_response(body, status_code, headers, apply_book=True)
 
 
 @app.route("/books/<path:subpath>", methods=["GET", "PUT"])
 @require_web_bff
 def book_subpath(subpath):
     body, status_code, headers = proxy_to_backend(f"/books/{subpath}", method=request.method)
-    return build_response(
-        body, status_code, headers, apply_book=_apply_book_genre_for_mobile_client()
-    )
+    return build_response(body, status_code, headers, apply_book=True)
 
 
 @app.after_request

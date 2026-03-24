@@ -33,7 +33,7 @@ Create test tokens at [jwt.io](https://jwt.io) with HS256 and payload like:
 
 - **Routing (ALB):** `X-Client-Type: Web` → Web BFF; `iOS` / `Android` → Mobile BFF; missing header → **400**.
 - **JWT:** `Authorization: Bearer …`; validate `sub`, `exp`, `iss` per assignment; else **401**.
-- **Mobile BFF only — books:** On **`GET /books/{ISBN}`** and **`GET /books/isbn/{ISBN}`**, replace `"non-fiction"` with **`3`** in the JSON body. (This repo also applies the same mapping on **POST/PUT** book responses and on **Web BFF** when `X-Client-Type` is `iOS`/`Android`, so misrouted ALB traffic still matches Gradescope.)
+- **Mobile BFF only — books:** On **`GET /books/{ISBN}`** and **`GET /books/isbn/{ISBN}`**, replace `"non-fiction"` with **`3`** in the JSON body. The **book service** emits **`genre`: `3`** for non-fiction on single-book JSON (POST/PUT/GET one book); **GET `/books`** list still returns the string **`non-fiction`**. The **Web BFF** maps **`3` → `'non-fiction'`** when **`X-Client-Type: Web`**, so web clients still see the string without relying on headers reaching the book service.
 - **Mobile BFF only — customers:** On **`GET /customers/{id}`** and **`GET /customers?userId=…`**, strip address fields (not on **`GET /customers`** list).
 
 ## Autograder / LLM summary

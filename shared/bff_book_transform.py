@@ -30,6 +30,38 @@ def _transform_book_obj(obj: dict) -> None:
         obj.pop("Genre", None)
 
 
+def transform_web_client_book_response(data: bytes) -> bytes:
+    """
+    Web clients expect genre string 'non-fiction'. Book service emits int 3 for non-fiction on
+    single-book responses; map 3 -> 'non-fiction' in JSON (idempotent for lists that use strings).
+    """
+    if not data:
+        return data
+    try:
+        text = data.decode("utf-8-sig")
+        if not text.lstrip().startswith(("{", "[")):
+            return data
+        parsed: Any = json.loads(text)
+
+        def fix(obj: dict) -> None:
+            if not isinstance(obj, dict):
+                return
+            g = obj.get("genre")
+            if isinstance(g, int) and g == 3:
+                obj["genre"] = "non-fiction"
+
+        if isinstance(parsed, list):
+            for item in parsed:
+                if isinstance(item, dict):
+                    fix(item)
+        elif isinstance(parsed, dict):
+            fix(parsed)
+        return json.dumps(parsed, separators=(",", ":")).encode("utf-8")
+    except Exception as e:
+        print("bff_book_transform: transform_web_client_book_response failed:", repr(e), file=sys.stderr)
+        return data
+
+
 def transform_book_response(data: bytes) -> bytes:
     """
     Parse JSON and rewrite genre. If parsing fails, return original bytes unchanged.
@@ -58,18 +90,13 @@ def transform_book_response(data: bytes) -> bytes:
 
 def apply_book_genre_after_request(resp: Any, *, web_bff: bool = False) -> Any:
     """
-    Flask @app.after_request: second pass so non-fiction -> 3 always applies to /books JSON
-    (covers edge cases where Response wasn't transformed in build_response).
+    Flask @app.after_request: second pass for /books JSON genre shaping.
 
-    web_bff=True: only rewrite when X-Client-Type is iOS/Android (Web BFF).
-    web_bff=False: Mobile BFF — rewrite for every proxied /books response.
+    Web BFF: Web client -> map genre int 3 -> 'non-fiction'; iOS/Android -> string non-fiction -> 3 (fallback).
+    Mobile BFF: non-fiction string -> 3 (fallback if book service did not emit 3).
     """
     from flask import request
 
-    if web_bff:
-        xt = (request.headers.get("X-Client-Type") or "").strip().lower()
-        if xt not in ("ios", "android"):
-            return resp
     if resp.status_code not in (200, 201):
         return resp
     ct = (resp.headers.get("Content-Type") or "").lower()
@@ -82,8 +109,20 @@ def apply_book_genre_after_request(resp: Any, *, web_bff: bool = False) -> Any:
     p = path.rstrip("/") or "/"
     if should_skip_book_genre_transform(m, p):
         return resp
+
+    xt = (request.headers.get("X-Client-Type") or "").strip().lower()
     data = resp.get_data()
-    new_body = transform_book_response(data)
+
+    if web_bff:
+        if xt == "web":
+            new_body = transform_web_client_book_response(data)
+        elif xt in ("ios", "android"):
+            new_body = transform_book_response(data)
+        else:
+            return resp
+    else:
+        new_body = transform_book_response(data)
+
     if new_body != data:
         resp.set_data(new_body)
         resp.headers["Content-Length"] = str(len(new_body))
