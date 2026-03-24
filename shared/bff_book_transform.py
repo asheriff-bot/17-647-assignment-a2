@@ -33,6 +33,31 @@ def should_skip_book_genre_transform(method: str, path: str) -> bool:
     return (method or "").upper() == "GET" and normalize_bff_path(path) == "/books"
 
 
+def _regex_fallback_genre_string_to_int_3(json_text: str) -> str:
+    """
+    Last resort for mobile JSON: replace quoted non-fiction genre with JSON number 3.
+    Catches cases where json.loads/dumps path misses (odd escaping, mixed keys).
+    """
+    if "non" not in json_text.lower() and "fiction" not in json_text.lower():
+        return json_text
+    t = json_text
+    # hyphen / unicode dash / space variants between non and fiction; also plain "nonfiction"
+    t = re.sub(
+        r'"genre"\s*:\s*"\s*non[\s\-_\u2010-\u2015\u00AD]*fiction\s*"',
+        '"genre":3',
+        t,
+        flags=re.IGNORECASE,
+    )
+    t = re.sub(r'"genre"\s*:\s*"\s*nonfiction\s*"', '"genre":3', t, flags=re.IGNORECASE)
+    t = re.sub(
+        r'"Genre"\s*:\s*"\s*non[\s\-_\u2010-\u2015\u00AD]*fiction\s*"',
+        '"Genre":3',
+        t,
+        flags=re.IGNORECASE,
+    )
+    return t
+
+
 def _transform_book_obj(obj: dict) -> None:
     if not isinstance(obj, dict):
         return
@@ -96,10 +121,16 @@ def transform_book_response(data: bytes) -> bytes:
             _transform_book_obj(parsed)
         # Preserve key order from backend (match Web BFF / autograder expectations).
         out = json.dumps(parsed, separators=(",", ":"))
+        out = _regex_fallback_genre_string_to_int_3(out)
         return out.encode("utf-8")
     except Exception as e:
         print("bff_book_transform: transform_book_response failed:", repr(e), file=sys.stderr)
-        return data
+        try:
+            text = data.decode("utf-8-sig")
+            fixed = _regex_fallback_genre_string_to_int_3(text)
+            return fixed.encode("utf-8") if fixed != text else data
+        except Exception:
+            return data
 
 
 def apply_book_genre_after_request(resp: Any, *, web_bff: bool = False) -> Any:
