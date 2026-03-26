@@ -105,6 +105,8 @@ def transform_book_response(data: bytes) -> bytes:
         text = data.decode("utf-8-sig")
         if not text.lstrip().startswith(("{", "[")):
             return data
+        # Wire-level pass before json.loads so quoted non-fiction becomes 3 even if object walk misses.
+        text = _regex_fallback_genre_string_to_int_3(text)
         parsed: Any = json.loads(text)
         if isinstance(parsed, list):
             for item in parsed:
