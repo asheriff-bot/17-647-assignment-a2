@@ -510,6 +510,7 @@ Resources:
             HttpHeaderName: X-Client-Type
             Values:
               - Web
+              - web
       Actions:
         - Type: forward
           TargetGroupArn: !Ref WebBFFTargetGroup
@@ -526,6 +527,7 @@ Resources:
             HttpHeaderName: X-Client-Type
             Values:
               - iOS
+              - ios
       Actions:
         - Type: forward
           TargetGroupArn: !Ref MobileBFFTargetGroup
@@ -542,6 +544,7 @@ Resources:
             HttpHeaderName: X-Client-Type
             Values:
               - Android
+              - android
       Actions:
         - Type: forward
           TargetGroupArn: !Ref MobileBFFTargetGroup
