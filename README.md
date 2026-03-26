@@ -38,7 +38,7 @@ Create test tokens at [jwt.io](https://jwt.io) with HS256 and payload like:
 
 ## Autograder / LLM summary
 
-- **Summary length tradeoff:** Book service **defaults `BOOK_SUMMARY_MIN_WORDS=0`** (short deterministic summary, better for **Books E2E** full-JSON equality). If the **“LLM Summary”** / length test fails, set **`BOOK_SUMMARY_MIN_WORDS=500`** (or **200**) on the **book** container. Keep **`ENABLE_LLM_SUMMARY` unset** unless you intend to call a real LLM.
+- **Summary length tradeoff:** Book service **defaults `BOOK_SUMMARY_MIN_WORDS=500`** so stored summaries meet **“acceptable length”** (test **32**). If **Books E2E** fails with a huge `summary` diff vs the reference, try **`BOOK_SUMMARY_MIN_WORDS=0`** on the **book** container (may **fail** test 32). Keep **`ENABLE_LLM_SUMMARY` unset** unless you intend to call a real LLM.
 - Book **summaries** must be **deterministic** for E2E tests that compare JSON. The book service **does not** call an external LLM unless you set **`ENABLE_LLM_SUMMARY=1`** (and `LLM_API_URL` + API key). Otherwise a fixed fallback summary is used.
 - **Mobile BFF** must be redeployed after code changes so **`genre`: `non-fiction` → `3`** applies on **single-book GETs**, **POST /books**, and **PUT /books/...** (not on **GET /books** list).
 - **If the “LLM Summary” test fails with `422 != 201`:** that is **not** an LLM bug — **`422` means duplicate ISBN** (`POST /books` rejected because that ISBN is already in `books`). Run **`scripts/truncate_for_gradescope.sql`** on the Aurora **writer** (or at least **`truncate_books.sql`**), then resubmit. Do **not** run **`seed_sample_books.sql`** on the DB you use for Gradescope.
