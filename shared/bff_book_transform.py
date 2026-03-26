@@ -9,7 +9,10 @@ import re
 import sys
 from typing import Any
 
-_GENRE_NONFICTION_RE = re.compile(r"[\s\-_\u2010-\u2015\u00AD]+")
+# Strip separators between "non" and "fiction": ASCII/Unicode dashes, NBSP, ZWSP/BOM (MySQL/UI paste edge cases).
+_GENRE_NONFICTION_RE = re.compile(
+    r"[\s\-_\u2010-\u2015\u00AD\u200b\u200c\u200d\ufeff\u2060]+"
+)
 
 
 def genre_value_is_nonfiction(g: Any) -> bool:
@@ -34,14 +37,14 @@ def _regex_fallback_genre_string_to_int_3(json_text: str) -> str:
     t = json_text
     # hyphen / unicode dash / space variants between non and fiction; also plain "nonfiction"
     t = re.sub(
-        r'"genre"\s*:\s*"\s*non[\s\-_\u2010-\u2015\u00AD]*fiction\s*"',
+        r'"genre"\s*:\s*"\s*non[\s\-_\u2010-\u2015\u00AD\u200b\u200c\u200d\ufeff\u2060]*fiction\s*"',
         '"genre":3',
         t,
         flags=re.IGNORECASE,
     )
     t = re.sub(r'"genre"\s*:\s*"\s*nonfiction\s*"', '"genre":3', t, flags=re.IGNORECASE)
     t = re.sub(
-        r'"Genre"\s*:\s*"\s*non[\s\-_\u2010-\u2015\u00AD]*fiction\s*"',
+        r'"Genre"\s*:\s*"\s*non[\s\-_\u2010-\u2015\u00AD\u200b\u200c\u200d\ufeff\u2060]*fiction\s*"',
         '"Genre":3',
         t,
         flags=re.IGNORECASE,
@@ -53,22 +56,32 @@ def _bytes_force_genre_nonfiction_to_three(data: bytes) -> bytes:
     """
     Last line of defense for mobile/iOS/Android JSON: replace quoted non-fiction with JSON number 3.
 
-    Catches Flask/jsonify spacing (space after colon) and cases where parse/regex paths miss.
+    Catches Flask/jsonify spacing, Unicode hyphens, and zero-width chars inside the genre string.
     Must NOT run on Web client responses (those need the string).
     """
-    if not data or b"genre" not in data or b"fiction" not in data.lower():
+    if not data or b"genre" not in data:
         return data
+    try:
+        text = data.decode("utf-8-sig")
+    except Exception:
+        return data
+    # Fast ASCII paths
     pairs = (
-        (b'"genre":"non-fiction"', b'"genre":3'),
-        (b'"genre": "non-fiction"', b'"genre":3'),
-        (b'"genre":"Non-Fiction"', b'"genre":3'),
-        (b'"genre": "Non-Fiction"', b'"genre":3'),
-        (b'"genre":"NON-FICTION"', b'"genre":3'),
-        (b'"genre": "NON-FICTION"', b'"genre":3'),
+        ('"genre":"non-fiction"', '"genre":3'),
+        ('"genre": "non-fiction"', '"genre":3'),
+        ('"Genre":"non-fiction"', '"genre":3'),
+        ('"Genre": "non-fiction"', '"genre":3'),
     )
     for old, new in pairs:
-        data = data.replace(old, new)
-    return data
+        text = text.replace(old, new)
+    # Unicode / ZWSP between "non" and "fiction" (case-insensitive key "genre")
+    sep = r"[\s\-_\u2010-\u2015\u00AD\u200b\u200c\u200d\ufeff\u2060]*"
+    text = re.sub(
+        rf'(?i)"genre"\s*:\s*"{sep}non{sep}fiction{sep}"',
+        '"genre":3',
+        text,
+    )
+    return text.encode("utf-8")
 
 
 def _transform_book_obj(obj: dict) -> None:
