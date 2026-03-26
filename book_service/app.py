@@ -321,6 +321,10 @@ def _sql_where_isbn_canonical() -> str:
     return "REPLACE(REPLACE(isbn, '-', ''), ' ', '') = %s"
 
 
+# Stored summary must fit in MySQL TEXT (~65KB). Keep below byte limit for utf8mb4.
+_MAX_SUMMARY_STORE_CHARS = 60000
+
+
 def fetch_book_row(cur, isbn_canonical: str) -> Optional[dict]:
     cur.execute(
         "SELECT isbn, title, author, description, genre, price, quantity, summary FROM books WHERE "
@@ -347,22 +351,34 @@ def _summary_min_words() -> int:
 
 def _ensure_summary_min_words(text: str, min_words: int) -> str:
     """Pad summary to at least min_words (0 = no padding)."""
+    cap = _MAX_SUMMARY_STORE_CHARS
     t = (text or "").strip()
     if min_words <= 0:
-        return t[:20000]
-    wc = len(t.split()) if t else 0
-    if wc >= min_words:
-        return t[:20000]
+        return t[:cap]
     filler = (
         "This section elaborates themes, audience, and practical relevance for readers evaluating the work. "
         "It situates main ideas in context and notes trade-offs, limitations, and possible applications. "
         "Examples suggest how concepts may appear in projects, teams, and learning paths over time."
     )
+    wc = len(t.split()) if t else 0
+    if wc >= min_words:
+        out = t[:cap]
+        # Truncation could drop below min_words on very long single-line input.
+        while min_words > 0 and len(out.split()) < min_words and len(out) < cap - 80:
+            out = (out + " " + filler).strip()[:cap]
+        return out
     parts = [t] if t else []
     combined = " ".join(parts)
-    while len(combined.split()) < min_words:
+    max_loops = max(min_words * 4, 5000)
+    loops = 0
+    while len(combined.split()) < min_words and loops < max_loops:
         combined = (combined + " " + filler).strip()
-    return combined[:20000]
+        loops += 1
+    combined = combined[:cap]
+    # If [:cap] cut in the middle of filler, word count may dip below min_words — top up within cap.
+    while min_words > 0 and len(combined.split()) < min_words and len(combined) < cap - 80:
+        combined = (combined + " " + filler).strip()[:cap]
+    return combined
 
 
 def _call_llm_or_fallback(title: str, author: str, description: str, genre: str) -> str:
