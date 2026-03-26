@@ -49,6 +49,28 @@ def _regex_fallback_genre_string_to_int_3(json_text: str) -> str:
     return t
 
 
+def _bytes_force_genre_nonfiction_to_three(data: bytes) -> bytes:
+    """
+    Last line of defense for mobile/iOS/Android JSON: replace quoted non-fiction with JSON number 3.
+
+    Catches Flask/jsonify spacing (space after colon) and cases where parse/regex paths miss.
+    Must NOT run on Web client responses (those need the string).
+    """
+    if not data or b"genre" not in data or b"fiction" not in data.lower():
+        return data
+    pairs = (
+        (b'"genre":"non-fiction"', b'"genre":3'),
+        (b'"genre": "non-fiction"', b'"genre":3'),
+        (b'"genre":"Non-Fiction"', b'"genre":3'),
+        (b'"genre": "Non-Fiction"', b'"genre":3'),
+        (b'"genre":"NON-FICTION"', b'"genre":3'),
+        (b'"genre": "NON-FICTION"', b'"genre":3'),
+    )
+    for old, new in pairs:
+        data = data.replace(old, new)
+    return data
+
+
 def _transform_book_obj(obj: dict) -> None:
     if not isinstance(obj, dict):
         return
@@ -117,13 +139,14 @@ def transform_book_response(data: bytes) -> bytes:
         # Preserve key order from backend (match Web BFF / autograder expectations).
         out = json.dumps(parsed, separators=(",", ":"))
         out = _regex_fallback_genre_string_to_int_3(out)
-        return out.encode("utf-8")
+        return _bytes_force_genre_nonfiction_to_three(out.encode("utf-8"))
     except Exception as e:
         print("bff_book_transform: transform_book_response failed:", repr(e), file=sys.stderr)
         try:
             text = data.decode("utf-8-sig")
             fixed = _regex_fallback_genre_string_to_int_3(text)
-            return fixed.encode("utf-8") if fixed != text else data
+            out = fixed.encode("utf-8") if fixed != text else data
+            return _bytes_force_genre_nonfiction_to_three(out)
         except Exception:
             return data
 
@@ -160,6 +183,10 @@ def apply_book_genre_after_request(resp: Any, *, web_bff: bool = False) -> Any:
             return resp
     else:
         new_body = transform_book_response(data)
+
+    # Web clients must keep string "non-fiction"; all other paths need integer 3 in JSON.
+    if not (web_bff and xt == "web"):
+        new_body = _bytes_force_genre_nonfiction_to_three(new_body)
 
     if new_body != data:
         resp.set_data(new_body)
