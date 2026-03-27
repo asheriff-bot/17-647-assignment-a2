@@ -12,7 +12,7 @@ from typing import Any, Optional, Tuple
 
 import pymysql
 import requests
-from flask import Flask, Response, jsonify, request
+from flask import Flask, Response, has_request_context, jsonify, request
 
 app = Flask(__name__)
 # Avoid 308 redirect on /books/ → /books that drops POST body (breaks autograders)
@@ -71,11 +71,21 @@ def _json_price(row_price) -> float | int:
     return float(d)
 
 
+def _request_client_type_lower() -> str:
+    """Incoming X-Client-Type from BFF (forwarded). Empty for direct :3000 calls without header."""
+    try:
+        if not has_request_context():
+            return ""
+        return (request.headers.get("X-Client-Type") or "").strip().lower()
+    except Exception:
+        return ""
+
+
 def _genre_for_json_response(genre_value: Any) -> Any:
     """
-    Always emit genre as int 3 for non-fiction and for numeric genre 3 (list, single GET, POST/PUT).
+    Non-fiction in DB: Web clients get string 'non-fiction'; iOS/Android (and direct :3000) get int 3.
 
-    DB keeps text or "3"; JSON uses int 3 so mobile autograders match. Web BFF maps 3 -> 'non-fiction'.
+    BFFs forward X-Client-Type to the book service so shaping happens here — not only via BFF JSON rewrites.
     """
     if isinstance(genre_value, bool):
         return genre_value
@@ -89,6 +99,8 @@ def _genre_for_json_response(genre_value: Any) -> Any:
     if isinstance(genre_value, str) and genre_value.strip() == "3":
         return 3
     if _stored_genre_is_nonfiction(genre_value):
+        if _request_client_type_lower() == "web":
+            return "non-fiction"
         return 3
     return genre_value
 

@@ -36,10 +36,10 @@ def proxy_to_backend(path: str, method: str = "GET", **kwargs):
         url += "?" + request.query_string.decode()
 
     m = (method or "GET").upper()
+    # Forward X-Client-Type so book_service emits genre int 3 for iOS/Android (not Web string).
     skip = {
         "host",
         "authorization",
-        "x-client-type",
         "content-length",
         "transfer-encoding",
     }

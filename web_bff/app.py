@@ -35,10 +35,10 @@ def proxy_to_backend(path: str, method: str = "GET", **kwargs):
     m = (method or "GET").upper()
 
     # Never forward these to internal services / Internal ALB (path routing only).
+    # X-Client-Type MUST be forwarded so book_service can emit genre string vs int 3 at the source.
     skip = {
         "host",
         "authorization",
-        "x-client-type",
         "content-length",
         "transfer-encoding",
     }
