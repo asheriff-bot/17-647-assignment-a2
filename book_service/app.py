@@ -81,11 +81,22 @@ def _request_client_type_lower() -> str:
         return ""
 
 
+def _mobile_bff_genre_int_header() -> bool:
+    """True when request came through a BFF that set X-A2-Mobile-BFF (mobile / iOS/Android on Web BFF)."""
+    try:
+        if not has_request_context():
+            return False
+        return (request.headers.get("X-A2-Mobile-BFF") or "").strip() == "1"
+    except Exception:
+        return False
+
+
 def _genre_for_json_response(genre_value: Any) -> Any:
     """
-    Non-fiction in DB: Web clients get string 'non-fiction'; iOS/Android (and direct :3000) get int 3.
+    Non-fiction in DB: Web-only clients get string 'non-fiction'; mobile paths get int 3.
 
-    BFFs forward X-Client-Type to the book service so shaping happens here — not only via BFF JSON rewrites.
+    Prefer **X-A2-Mobile-BFF** (always set by Mobile BFF; set by Web BFF for iOS/Android) over **X-Client-Type**,
+    because some proxies strip **X-Client-Type** before the book service while still forwarding custom headers.
     """
     if isinstance(genre_value, bool):
         return genre_value
@@ -99,6 +110,8 @@ def _genre_for_json_response(genre_value: Any) -> Any:
     if isinstance(genre_value, str) and genre_value.strip() == "3":
         return 3
     if _stored_genre_is_nonfiction(genre_value):
+        if _mobile_bff_genre_int_header():
+            return 3
         if _request_client_type_lower() == "web":
             return "non-fiction"
         return 3
