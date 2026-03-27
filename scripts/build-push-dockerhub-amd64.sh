@@ -3,7 +3,7 @@
 #
 # Usage (from repo root):
 #   export DH=yourdockerhubuser
-#   export TAG=a2-latest
+#   export TAG=a2-2-latest
 #   ./scripts/build-push-dockerhub-amd64.sh
 #
 # Prerequisites:
@@ -15,7 +15,7 @@
 set -euo pipefail
 
 : "${DH:?Set DH to your Docker Hub username (lowercase)}"
-: "${TAG:=a2-latest}"
+: "${TAG:=a2-latest-2}"
 
 PLATFORM="linux/amd64"
 

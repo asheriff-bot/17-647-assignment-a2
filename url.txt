@@ -1,1 +1,1 @@
-http://bookstore-dev-ExternalALB-1278332688.us-east-1.elb.amazonaws.com:80
+http://bookstore-dev-ExternalALB-1771501325.us-east-1.elb.amazonaws.com:80
