@@ -15,7 +15,7 @@
 set -euo pipefail
 
 : "${DH:?Set DH to your Docker Hub username (lowercase)}"
-: "${TAG:=a2-latest}"
+: "${TAG:=a21-latest}"
 
 PLATFORM="linux/amd64"
 
