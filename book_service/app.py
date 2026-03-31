@@ -291,20 +291,23 @@ def validate_quantity(q: Any) -> Tuple[bool, Optional[int]]:
     if q is None or isinstance(q, bool):
         return False, None
     if isinstance(q, int) and not isinstance(q, bool):
-        return True, q
+        return (True, q) if q >= 0 else (False, None)
     if isinstance(q, float) and q.is_integer():
-        return True, int(q)
+        qi = int(q)
+        return (True, qi) if qi >= 0 else (False, None)
     if isinstance(q, str):
         s = q.strip()
         if s.isdigit() or (s.startswith("-") and s[1:].isdigit()):
             try:
-                return True, int(s)
+                qi = int(s)
+                return (True, qi) if qi >= 0 else (False, None)
             except ValueError:
                 return False, None
         try:
             f = float(s)
             if f.is_integer():
-                return True, int(f)
+                qi = int(f)
+                return (True, qi) if qi >= 0 else (False, None)
         except ValueError:
             pass
     return False, None
