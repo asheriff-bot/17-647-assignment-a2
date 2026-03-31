@@ -185,6 +185,10 @@ def apply_book_genre_after_request(resp: Any, *, web_bff: bool = False) -> Any:
     if not path.startswith("/books"):
         return resp
 
+    # POST/PUT book write responses must pass through unchanged (echo request body; no genre rewrites).
+    if request.method in ("POST", "PUT") and resp.status_code in (200, 201):
+        return resp
+
     xt = (request.headers.get("X-Client-Type") or "").strip().lower()
 
     if web_bff:

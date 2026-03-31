@@ -115,7 +115,8 @@ def _a2_should_transform_customer_get() -> bool:
 def build_response(body, status_code, headers, apply_book=False, apply_customer=False):
     # Redundant with book service X-A2-Mobile-BFF mapping; keeps responses correct if header stripped.
     if body and apply_book:
-        body = transform_book_response(body)
+        if not (request.method in ("POST", "PUT") and status_code in (200, 201)):
+            body = transform_book_response(body)
     if body and request.method == "GET" and status_code == 200:
         if apply_customer and _a2_should_transform_customer_get():
             body = transform_customer_response(body)

@@ -73,11 +73,13 @@ def proxy_to_backend(path: str, method: str = "GET", **kwargs):
 def build_response(body, status_code, headers, apply_book=False):
     # Book service emits genre int 3 for non-fiction on single-book JSON; Web BFF maps 3 -> 'non-fiction' for Web.
     if body and apply_book:
-        xt = (request.headers.get("X-Client-Type") or "").strip().lower()
-        if xt == "web":
-            body = transform_web_client_book_response(body)
-        elif xt in ("ios", "android"):
-            body = transform_book_response(body)
+        skip_write_echo = request.method in ("POST", "PUT") and status_code in (200, 201)
+        if not skip_write_echo:
+            xt = (request.headers.get("X-Client-Type") or "").strip().lower()
+            if xt == "web":
+                body = transform_web_client_book_response(body)
+            elif xt in ("ios", "android"):
+                body = transform_book_response(body)
     resp = Response(body, status=status_code)
     for k, v in headers.items():
         lk = k.lower()
