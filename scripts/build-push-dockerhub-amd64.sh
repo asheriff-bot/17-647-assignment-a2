@@ -2,9 +2,10 @@
 # Build all four A2 images for linux/amd64 (EC2 t3.micro / Amazon Linux) and push to Docker Hub.
 #
 # Usage (from repo root):
-#   export DH=yourdockerhubuser
-#   export TAG=a2-2-latest
 #   ./scripts/build-push-dockerhub-amd64.sh
+# Optional overrides:
+#   export DH=otheruser      # default: akramdocke
+#   export TAG=a2-2-latest   # default: a21-latest
 #
 # Prerequisites:
 #   docker login
@@ -14,8 +15,8 @@
 
 set -euo pipefail
 
-: "${DH:?Set DH to your Docker Hub username (lowercase)}"
-: "${TAG:=a21-latest}"
+DH="${DH:-akramdocke}"
+TAG="${TAG:-a21-latest}"
 
 PLATFORM="linux/amd64"
 
