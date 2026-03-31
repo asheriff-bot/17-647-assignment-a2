@@ -1,6 +1,9 @@
 # ---- Environment & secrets ----
+# Real env files (any directory); never commit. Use */.env.example as template.
+**/.env
 .env
 .env.*
+!**/.env.example
 !.env.example
 *.pem
 *.key
